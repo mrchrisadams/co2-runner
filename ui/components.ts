@@ -2,8 +2,24 @@
 // Renders a small dark-themed app that listens to the SSE stream of
 // results + progress and lets the user kick off a journey via POST /run.
 
+const RESULT_CARD_TEMPLATE = /* html */ `
+        <div class="result-name">\${r.name}</div>
+        <div class="result-metrics">
+          <div>
+            <div class="metric-value">\${r.mWh.toFixed(4)}</div>
+            <div class="metric-label">mWh</div>
+          </div>
+          <div>
+            <div class="metric-value">\${r.joules.toFixed(4)}</div>
+            <div class="metric-label">Joules</div>
+          </div>
+        </div>
+        <div class="result-time">\${new Date(r.timestamp).toLocaleString()}</div>
+      `;
+
 export function renderDashboard(): string {
-  return `<!DOCTYPE html>
+
+  return /* html */ `<!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8">
@@ -66,20 +82,7 @@ export function renderDashboard(): string {
     function addResultCard(r) {
       const card = document.createElement("div");
       card.className = "result-card";
-      card.innerHTML = \`
-        <div class="result-name">\${r.name}</div>
-        <div class="result-metrics">
-          <div>
-            <div class="metric-value">\${r.mWh.toFixed(4)}</div>
-            <div class="metric-label">mWh</div>
-          </div>
-          <div>
-            <div class="metric-value">\${r.joules.toFixed(4)}</div>
-            <div class="metric-label">Joules</div>
-          </div>
-        </div>
-        <div class="result-time">\${new Date(r.timestamp).toLocaleString()}</div>
-      \`;
+       card.innerHTML = \`${RESULT_CARD_TEMPLATE}\`;
       document.getElementById("results").prepend(card);
       setStatus("");
     }
