@@ -211,6 +211,69 @@ UI opens.
 - [ ] Bundled Chromium webview option (`--bundle-webview` to `deno desktop`) for
       pixel-identical rendering.
 
+### Phase 9 — Codegen script support (`runner/run-script.ts`)
+
+- [x] `runner/run-script.ts` — `runScript(scriptPath, store, opts)`: spawns
+      `deno run -A --allow-scripts=npm:playwright npm:@playwright/test test
+      <script> --config <generated>`,
+      inherits `MOZ_PROFILER_*` env, parses the resulting profile JSON via the
+      existing `parseEnergyProfile()`.
+- [x] Generated `playwright.config.ts` per run, written to
+      `<artefacts-dir>/<slug>-playwright.config.ts`, deleted after the run. Uses
+      `use.contextOptions.recordHar` (NOT `use.recordHar` — that's a per-test
+      fixture option, not a config-level one) to capture a full HAR with
+      response bodies embedded.
+- [x] Single-test validation via `playwright test --list` — rejects >1 `test()`
+      per file with a clear error. Multi-test files fragment energy data across
+      browser sessions and are out of scope for this phase; users split them
+      into one test per file.
+- [x] `runJourney()` dispatcher in `runner/run.ts` keys off file extension:
+      `.yaml/.yml` → existing YAML pipeline; `.js/.mjs/.ts` → `runScript()`. No
+      changes to main.ts or the CLI subcommand — both formats pass through
+      transparently.
+- [x] `POST /run` upgrade: body field `journeyContents` (new) replaces
+      `journeyYaml` (kept as legacy alias). The temp file's suffix is derived
+      from `journeyName`'s extension so the dispatcher routes correctly.
+      Uploaded scripts are written to
+      `~/.co2-runner/uploaded-journeys/<ts>-<name>` (not the OS tmp dir) to
+      avoid Playwright's `--list` walking system temp folders and tripping
+      EPERM.
+- [x] `journeys/example.spec.js` — codegen-style single-test script mirroring
+      `journeys/example.yaml`'s Branch Magazine journey.
+- [x] UI file picker `accept` attribute gains `.js,.mjs,.ts`. The dashboard
+      sends the uploaded file's name as `journeyName` so the server dispatcher
+      picks the right pipeline.
+- [x] Tests: `tests/runner/run-script_test.ts` (4 unit tests for
+      `isScriptFile` + extension list),
+      `tests/integration/run-script_journey_test.ts` (2 tests: end-to-end run,
+      multi-test rejection).
+
+**Verified end-to-end via the dev server's `POST /run`:**
+
+```
+POST /run {
+  journeyContents: <contents of journeys/example.spec.js>,
+  journeyName:    "example.spec.js"
+}
+→ {"started": true}
+→ SSE: firefox-status + progress (validate, run) + result
+  result.name         = "example.spec.js"
+  result.mWh          = 2.3059
+  result.joules       = 8.3015
+  result.profilePath  = ~/.co2-runner/journey-artefacts/example-spec-js-profile.json
+  ~/.co2-runner/journey-artefacts/example-spec-js.har (797 KB, full HAR with bodies)
+```
+
+**Out of scope (deferred):**
+
+- [ ] Multi-test files — would fragment energy across browser sessions; out of
+      scope for v1.
+- [ ] Custom Playwright reporter that surfaces in-test assertion failures with
+      line numbers via SSE. Currently the failure is reported via the
+      subprocess's non-zero exit code, which gives a generic "journey script
+      failed (exit code N)" message + the full Playwright trace is in server
+      stderr.
+
 ## Known caveats to track
 
 1. **`deno desktop` requires Deno >= 2.9.0.** Now satisfied (running 2.9.5).

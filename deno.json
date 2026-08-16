@@ -4,6 +4,7 @@
   "exports": "./main.ts",
   "imports": {
     "playwright": "npm:playwright@^1.45",
+    "@playwright/test": "npm:@playwright/test@^1.45",
     "yaml": "npm:yaml@^2.4",
     "zlib": "node:zlib",
     "fs": "node:fs/promises",
@@ -49,9 +50,10 @@
         "no-empty",
         "require-await"
       ]
-    }
+    },
+    "exclude": ["cruft/", "screenshots/", "dist/", "journeys/"]
   },
   "fmt": {
-    "exclude": ["cruft/", "screenshots/", "dist/"]
+    "exclude": ["cruft/", "screenshots/", "dist/", "journeys/"]
   }
 }

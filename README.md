@@ -33,10 +33,49 @@ deno task run
 
 ```
 co2-runner install           Downloads Playwright's bundled Firefox
-co2-runner run <journey.yaml>  Runs a journey + emits energy figures
+co2-runner run <journey>      Runs a journey + emits energy figures
+  <journey> may be:
+    .yaml / .yml             — declarative config (see journeys/example.yaml)
+    .js / .mjs / .ts         — Playwright codegen script (see journeys/example.spec.js)
 co2-runner serve               Starts the desktop / HTTP UI
 co2-runner --help              Show usage
 ```
+
+## Journey formats
+
+co2-runner supports two journey file formats, dispatched by extension.
+
+### YAML journeys (`journeys/example.yaml`)
+
+A declarative format — a list of `steps` (`goto`/`click`/`fill`/`scroll`/`wait`)
+that co2-runner executes. Best when you want a small, hand-writable journey
+definition. Steps are sequential; energy is summed across the whole run.
+
+### Playwright codegen scripts (`journeys/example.spec.js`)
+
+For more complex journeys, use `playwright codegen` to record a script:
+
+```sh
+# Record a journey against branch.climateaction.tech
+npx playwright codegen https://branch.climateaction.tech
+```
+
+Save the resulting `.spec.js` output into `journeys/` (or pick it from the
+desktop UI's file picker). co2-runner runs the script via `@playwright/test`,
+capturing the same HAR + Mozilla Profiler energy data as the YAML pipeline.
+
+**Constraints** (enforced on upload — scripts that violate these fail with a
+clear error message):
+
+- Exactly one `test()` per file. Multi-test files fragment energy data across
+  separate browser sessions. Split them into one test per file.
+- Assertion failures (`expect()` throwing) abort the journey with a failure
+  report — no energy figure is produced, since the page reached an unexpected
+  state.
+- HAR is captured automatically via a generated `playwright.config.ts` that sits
+  next to the profile + HAR in `~/.co2-runner/journey-artefacts/`. If your
+  script sets its own `test.use({ recordHar })` it overrides co2-runner's path —
+  the captured HAR may not land where expected.
 
 See `journeys/example.yaml` for the journey config format. Energy figures are
 persisted to `~/.co2-runner/history.db` (SQLite) for cross-run comparison.
@@ -109,9 +148,10 @@ jj git push -b v0.1.0
   on the first interaction. All `deno task` scripts and the compiled binaries
   already embed the flag — only relevant if you bypass them with your own
   `deno run`/`deno compile` invocation.
-- **Journey selectors are site-version-specific.** `journeys/example.yaml`
-  targets the current (Issue 9) layout of `branch.climateaction.tech`. If the
-  site is revised, update the `click.selector` lines to match.
+- **Journey selectors are site-version-specific.** `journeys/example.yaml` and
+  `journeys/example.spec.js` target the current (Issue 9) layout of
+  `branch.climateaction.tech`. If the site is revised, re-record with
+  `npx playwright codegen` or update the YAML selector lines to match.
 - **Deno KV is avoided** (stuck in beta since Deno's May 2025 "Greatly
   Exaggerated" post). History uses `node:sqlite` (`DatabaseSync`) which is built
   into Deno 2.2+ with no extra deps.

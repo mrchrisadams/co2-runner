@@ -1,5 +1,10 @@
 import { assertEquals } from "jsr:@std/assert";
-import { artefactsDir, co2RunnerHome, defaultDbPath } from "../../ui/paths.ts";
+import {
+  artefactsDir,
+  co2RunnerHome,
+  defaultDbPath,
+  uploadsDir,
+} from "../../ui/paths.ts";
 
 Deno.test("co2RunnerHome honours CO2_RUNNER_HOME env", () => {
   Deno.env.set("CO2_RUNNER_HOME", "/tmp/custom-co2-home");
@@ -27,5 +32,14 @@ Deno.test("defaultDbPath honours CO2_RUNNER_DB env (highest precedence)", () => 
     assertEquals(defaultDbPath(), "/tmp/custom-hist.db");
   } finally {
     Deno.env.delete("CO2_RUNNER_DB");
+  }
+});
+
+Deno.test("uploadsDir resolves under co2RunnerHome", () => {
+  Deno.env.set("CO2_RUNNER_HOME", "/tmp/custom-co2-home");
+  try {
+    assertEquals(uploadsDir(), "/tmp/custom-co2-home/uploaded-journeys");
+  } finally {
+    Deno.env.delete("CO2_RUNNER_HOME");
   }
 });

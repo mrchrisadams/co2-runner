@@ -6,6 +6,7 @@ history.db-journal
 .deno/
 .deno_compile_node_modules/
 node_modules/
+test-results/
 *.log
 main
 main-*

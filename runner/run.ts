@@ -1,9 +1,16 @@
-// runner/run.ts — drives Playwright Firefox through a YAML journey and
-// collects energy data via the Mozilla Profiler power counters.
+// runner/run.ts — journey dispatcher + YAML journey runner.
+//
+// co2-runner supports two journey formats, dispatched by file extension:
+//   .yaml / .yml  — YAML config file (processed by runJourney below)
+//   .js / .mjs / .ts — Playwright codegen script (delegated to run-script.ts)
+//
+// Both formats land at the same JourneyResult shape and the same artefacts
+// dir, so the UI / history / energy parser stay format-agnostic.
 
 import { firefox } from "playwright";
 import { parse as parseYaml } from "yaml";
 import { parseEnergyProfile } from "./energy.ts";
+import { isScriptFile, runScript } from "./run-script.ts";
 import { artefactsDir } from "../ui/paths.ts";
 import type { ResultsStore } from "../ui/results.ts";
 import type { JourneyConfig, JourneyResult, PageLike, Step } from "../types.ts";
@@ -35,7 +42,14 @@ function validateConfig(raw: unknown, source: string): JourneyConfig {
 export async function runJourney(
   journeyPath: string,
   store?: ResultsStore,
+  opts?: { displayName?: string },
 ): Promise<JourneyResult> {
+  // Dispatcher: .js/.mjs/.ts go to the codegen-script pipeline; everything
+  // else is treated as YAML.
+  if (isScriptFile(journeyPath)) {
+    return runScript(journeyPath, store, opts);
+  }
+
   const raw = await Deno.readTextFile(journeyPath);
   const config = validateConfig(parseYaml(raw), journeyPath);
 

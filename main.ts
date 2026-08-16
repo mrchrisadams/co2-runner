@@ -10,7 +10,7 @@ import { runJourney } from "./runner/run.ts";
 import { ResultsStore, type StoreEvent } from "./ui/results.ts";
 import { renderDashboard } from "./ui/components.ts";
 import { History } from "./ui/history.ts";
-import { defaultDbPath } from "./ui/paths.ts";
+import { defaultDbPath, uploadsDir } from "./ui/paths.ts";
 
 const args = Deno.args;
 const isServeMode = args[0] === "serve";
@@ -218,7 +218,12 @@ Deno.serve({ port, hostname }, async (req: Request) => {
   }
 
   if (url.pathname === "/run" && req.method === "POST") {
-    let body: { journey?: string; journeyYaml?: string; journeyName?: string };
+    let body: {
+      journey?: string;
+      journeyYaml?: string; // legacy alias for journeyContents (pre-codegen)
+      journeyContents?: string;
+      journeyName?: string;
+    };
     try {
       body = await req.json();
     } catch {
@@ -244,16 +249,29 @@ Deno.serve({ port, hostname }, async (req: Request) => {
     let journeyPath: string;
     let displayName: string;
 
-    if (body.journeyYaml !== undefined) {
-      // File-picker path: client uploaded the YAML contents. We never see a
-      // path, so write to a temp file the runner can read.
-      const tmp = await Deno.makeTempFile({
-        prefix: "co2-runner-journey-",
-        suffix: ".yaml",
-      });
-      await Deno.writeTextFile(tmp, body.journeyYaml);
+    // `journeyContents` (new) is preferred; `journeyYaml` (old name) is
+    // accepted as an alias for backward-compat with older clients that
+    // haven't been updated yet.
+    const uploaded = body.journeyContents ?? body.journeyYaml;
+    if (uploaded !== undefined) {
+      const uploadedName = body.journeyName ?? "uploaded-journey.yaml";
+      // Write the uploaded contents into a subdirectory under our own
+      // data dir (rather than the OS tmp dir). Playwright's `--list`
+      // walks the script's parent dir recursively; if that's $TMPDIR,
+      // traversal hits EPERM on system subfolders like
+      // com.apple.amsengagementd. Co-locating with artefacts also makes
+      // the journey file itself visible if users want to inspect it.
+      //
+      // The uploaded file's extension is preserved verbatim in safeName,
+      // so runJourney's dispatcher routes correctly: .yaml → YAML
+      // pipeline, .js/.mjs/.ts → codegen-script pipeline.
+      const dir = uploadsDir();
+      await Deno.mkdir(dir, { recursive: true });
+      const safeName = uploadedName.replace(/[^\w.-]/g, "_");
+      const tmp = `${dir}/${Date.now()}-${safeName}`;
+      await Deno.writeTextFile(tmp, uploaded);
       journeyPath = tmp;
-      displayName = body.journeyName ?? "uploaded journey";
+      displayName = uploadedName;
     } else if (body.journey !== undefined) {
       // Legacy path-based mode (CLI, backward-compat).
       const safePath = safeJourneyPath(body.journey);
@@ -272,21 +290,21 @@ Deno.serve({ port, hostname }, async (req: Request) => {
       return new Response(
         JSON.stringify({
           error:
-            "either 'journeyYaml' (string contents) or 'journey' (path) is required",
+            "either 'journeyContents' (string contents) or 'journey' (path) is required",
         }),
         { status: 400, headers: { "content-type": "application/json" } },
       );
     }
 
-    runJourney(journeyPath, store)
+    runJourney(journeyPath, store, { displayName })
       .then((result) => {
         try {
           history.insert(result);
         } catch (err) {
           console.warn(`history write failed: ${(err as Error).message}`);
         }
-        // If we wrote a temp file for uploaded YAML, clean it up.
-        if (body.journeyYaml !== undefined) {
+        // If we wrote a temp file for uploaded contents, clean it up.
+        if (uploaded !== undefined) {
           Deno.remove(journeyPath).catch(() => {});
         }
       })
@@ -300,7 +318,7 @@ Deno.serve({ port, hostname }, async (req: Request) => {
           status: "error",
           message: err.message,
         });
-        if (body.journeyYaml !== undefined) {
+        if (uploaded !== undefined) {
           Deno.remove(journeyPath).catch(() => {});
         }
       });

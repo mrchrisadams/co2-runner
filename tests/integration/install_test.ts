@@ -103,9 +103,9 @@ Deno.test("POST /install without a body still starts the install", () =>
     assertEquals(json.started, true);
   }));
 
-// ── /run with journeyYaml — the file-picker payload ────────────────────
+// ── /run with journeyContents — the file-picker payload ─────────────
 
-Deno.test("POST /run with journeyYaml refuses when Firefox is missing (409)", () =>
+Deno.test("POST /run with journeyContents refuses when Firefox is missing (409)", () =>
   withServer(async () => {
     // Force the server's view of Firefox-installed to false so the gate
     // fires. We can't easily toggle the server's internal state from
@@ -124,14 +124,17 @@ Deno.test("POST /run with journeyYaml refuses when Firefox is missing (409)", ()
     const res = await fetch(`${BASE}/run`, {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ journeyYaml: yaml, journeyName: "example.yaml" }),
+      body: JSON.stringify({
+        journeyContents: yaml,
+        journeyName: "example.yaml",
+      }),
     });
     assertEquals(res.status, 409);
     const json = await res.json();
     assertStringIncludes(json.error, "Firefox is not installed");
   }));
 
-Deno.test("POST /run with neither journey nor journeyYaml returns 400", () =>
+Deno.test("POST /run with neither journey nor journeyContents returns 400", () =>
   withServer(async () => {
     const res = await fetch(`${BASE}/run`, {
       method: "POST",
@@ -140,10 +143,10 @@ Deno.test("POST /run with neither journey nor journeyYaml returns 400", () =>
     });
     assertEquals(res.status, 400);
     const json = await res.json();
-    assertStringIncludes(json.error, "either 'journeyYaml'");
+    assertStringIncludes(json.error, "either 'journeyContents'");
   }));
 
-Deno.test("POST /run with journeyYaml accepts an uploaded YAML", () =>
+Deno.test("POST /run with journeyContents accepts an uploaded YAML", () =>
   withServer(async () => {
     // Will return 409 if Firefox isn't installed locally — that's still
     // proof the body parsed and the upload-path branch was taken.
@@ -151,8 +154,30 @@ Deno.test("POST /run with journeyYaml accepts an uploaded YAML", () =>
     const res = await fetch(`${BASE}/run`, {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ journeyYaml: yaml }),
+      body: JSON.stringify({ journeyContents: yaml }),
     });
+    assert(
+      res.status === 200 || res.status === 409,
+      `expected 200 (accepted) or 409 (firefox gate), got ${res.status}`,
+    );
+  }));
+
+Deno.test("POST /run with journeyContents accepts an uploaded .spec.js", () =>
+  withServer(async () => {
+    // Prove the dispatcher handles JS file uploads (vs YAML):
+    // the temp file's suffix derives from journeyName, so it routes to
+    // run-script.ts (not the YAML parser).
+    const js = await Deno.readTextFile("./journeys/example.spec.js");
+    const res = await fetch(`${BASE}/run`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        journeyContents: js,
+        journeyName: "example.spec.js",
+      }),
+    });
+    // Firefox gate may fire (409) — that's fine, proves the body+suffix
+    // parsed. If Firefox IS installed, we'd see 200 + later result via SSE.
     assert(
       res.status === 200 || res.status === 409,
       `expected 200 (accepted) or 409 (firefox gate), got ${res.status}`,

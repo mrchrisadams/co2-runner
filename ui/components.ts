@@ -95,8 +95,8 @@ export function renderDashboard(): string {
 
   <div class="run-form">
     <label class="file-label" for="journey-input">
-      <span id="file-label-text">📄 Choose a journey YAML file…</span>
-      <input id="journey-input" type="file" accept=".yaml,.yml" />
+      <span id="file-label-text">📄 Choose a journey YAML or codegen JS file…</span>
+      <input id="journey-input" type="file" accept=".yaml,.yml,.js,.mjs,.ts" />
     </label>
     <button id="run-btn" disabled>▶ Run Journey</button>
   </div>

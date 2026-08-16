@@ -104,7 +104,7 @@ function onFilePicked(e) {
     labelEl.textContent = "📄 " + file.name;
     fileLabel.classList.add("has-file");
   } else {
-    labelEl.textContent = "📄 Choose a journey YAML file…";
+    labelEl.textContent = "📄 Choose a journey YAML or codegen JS file…";
     fileLabel.classList.remove("has-file");
   }
   updateRunButton();
@@ -123,11 +123,11 @@ async function startRun() {
   btn.disabled = true;
   setStatus("⏳ Uploading journey…");
   try {
-    const yaml = await selectedFile.text();
+    const contents = await selectedFile.text();
     const res = await fetch("/run", {
       method: "POST",
       body: JSON.stringify({
-        journeyYaml: yaml,
+        journeyContents: contents,
         journeyName: selectedFile.name,
       }),
       headers: { "content-type": "application/json" },
