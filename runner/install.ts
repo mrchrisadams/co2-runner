@@ -4,6 +4,7 @@
 
 import { firefox } from "playwright";
 import { exists } from "../util/exists.ts";
+import { DenoNotFoundError, findDenoBinary } from "../util/deno-bin.ts";
 
 export interface InstallProgress {
   phase: "starting" | "downloading" | "complete" | "error";
@@ -42,7 +43,18 @@ export async function installBrowsersWithProgress(
     phase: "starting",
     message: "Installing Playwright's bundled Firefox...",
   });
-  const cmd = new Deno.Command("deno", {
+
+  // Resolve the deno CLI binary. Compiled desktop binaries launch with a
+  // minimal PATH (Finder doesn't include ~/.deno/bin), so we search
+  // well-known locations first. Without this, `new Deno.Command("deno")`
+  // throws "entity not found" when run from the desktop app.
+  const denoBin = await findDenoBinary();
+  if (!denoBin) {
+    emit({ phase: "error", message: new DenoNotFoundError().message });
+    throw new DenoNotFoundError();
+  }
+
+  const cmd = new Deno.Command(denoBin, {
     args: [
       "run",
       "--allow-all",

@@ -2,6 +2,7 @@
 // Mirrors to subscribers via a callback list (used by the SSE endpoint).
 
 import type {
+  CodegenProgress,
   InstallProgress,
   JourneyProgress,
   JourneyResult,
@@ -13,11 +14,13 @@ export type StoreEvent =
   | { type: "result"; result: JourneyResult }
   | { type: "progress"; progress: JourneyProgress }
   | { type: "install"; install: InstallProgress }
+  | { type: "codegen"; codegen: CodegenProgress }
   | { type: "firefox-status"; installed: boolean };
 
 export class ResultsStore {
   results: JourneyResult[] = [];
   firefoxInstalled = false;
+  codegenInProgress = false;
   private subscribers = new Set<Subscriber>();
 
   subscribe(cb: Subscriber): () => void {
@@ -36,6 +39,14 @@ export class ResultsStore {
 
   installProgress(p: InstallProgress): void {
     this.emit({ type: "install", install: p });
+  }
+
+  codegenProgress(p: CodegenProgress): void {
+    if (p.phase === "starting") this.codegenInProgress = true;
+    if (p.phase === "complete" || p.phase === "error") {
+      this.codegenInProgress = false;
+    }
+    this.emit({ type: "codegen", codegen: p });
   }
 
   setFirefoxInstalled(installed: boolean): void {

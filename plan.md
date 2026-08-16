@@ -274,6 +274,86 @@ POST /run {
       failed (exit code N)" message + the full Playwright trace is in server
       stderr.
 
+### Phase 10 — In-app codegen (`runner/codegen.ts`)
+
+Users can now record a journey directly from co2-runner, without leaving the app
+to run `npx playwright codegen` in a terminal. Implementation spawns
+Playwright's codegen as a subprocess — same approach as the existing install/run
+subprocess pattern.
+
+- [x] `runner/codegen.ts` — `launchCodegen({ startUrl, outputPath })` spawns
+      `deno run -A --allow-scripts=npm:playwright npm:playwright
+      codegen --browser=firefox --target=playwright-test --output=<path>
+      <url>`.
+      The Inspector + Firefox windows appear directly on the user's desktop.
+      Streams stdout lines as `CodegenProgress` events via the optional
+      `onProgress` callback.
+- [x] `hasGraphicalDisplay()` — synchronously checks the env for DISPLAY /
+      WAYLAND_DISPLAY on Linux; always true on macOS + Windows. Used to fail
+      fast with a clear message rather than letting Playwright crash with an
+      opaque "browserType.launch: Executable doesn't exist" inside an
+      unreachable webview backend.
+- [x] `buildCodegenFilename(startUrl)` — formats as `<timestamp>-<host>.spec.js`
+      (colons in ISO timestamps replaced with dashes for filename safety on
+      Windows).
+- [x] CLI subcommand: `co2-runner codegen <url> [output.spec.js]`.
+      Auto-generates the output path under `~/.co2-runner/recorded-journeys/` if
+      not supplied. Gates on Firefox installed + graphical display; refuses with
+      a clear error message otherwise.
+- [x] HTTP endpoints:
+  - `GET /codegen-status` →
+    `{ canCodegen, firefoxInstalled,
+    hasGraphicalDisplay, codegenInProgress }`
+    — used by the UI to decide whether to enable the Record button.
+  - `POST /codegen` with body `{ startUrl }` → spawns the codegen subprocess in
+    the background, returns `{ started, outputPath }`. Gates on Firefox +
+    display, returns 409 with a helpful message otherwise. Progress + completion
+    events flow through the SSE stream as `codegen` events.
+- [x] UI: 🔴 Record button next to the file picker. Opens a modal asking for the
+      start URL, then fires `POST /codegen`. The button is disabled until
+      `firefoxInstalled && hasGraphicalDisplay` (user feedback: shows pulsing
+      animation while recording in progress). When the user closes the
+      Inspector, a `complete` event arrives with the saved path; the user
+      manually picks the file via the existing file picker to run it.
+- [x] `CodegenProgress` type added to types.ts; `ResultsStore` gains
+      `codegenProgress()` + `codegenInProgress` state + new 'codegen' event
+      variant in `StoreEvent`.
+
+**Verified end-to-end via the desktop app:**
+
+```
+$ open dist/CO2Runner.app
+$ curl http://127.0.0.1:<port>/codegen-status
+{"canCodegen":true,"firefoxInstalled":true,"hasGraphicalDisplay":true,"codegenInProgress":false}
+
+$ curl -X POST http://127.0.0.1:<port>/codegen -d '{"startUrl":"https://example.com"}'
+{"started":true,"outputPath":"~/.co2-runner/recorded-journeys/2026-...-example.com.spec.js"}
+
+# (Inspector + Firefox windows open on desktop)
+# (user clicks around, closes Inspector)
+
+$ ls ~/.co2-runner/recorded-journeys/2026-...-example.com.spec.js
+$ cat ~/.co2-runner/recorded-journeys/2026-...-example.com.spec.js
+import { test, expect } from '@playwright/test';
+test('test', async ({ page }) => {
+  await page.goto('https://example.com/');
+});
+
+# Run the recorded journey through co2-runner:
+$ ./co2-runner run ~/.co2-runner/recorded-journeys/2026-...-example.com.spec.js
+=== Energy Report: 2026-...-example.com ===
+1.5470 mWh  (5.5692 J)
+```
+
+Tests:
+
+- `tests/runner/codegen_test.ts` (6 unit tests): filename slug format, hostname
+  extraction, fallback for non-URL input, filename-safe timestamps,
+  `hasGraphicalDisplay()` return type + macOS value.
+- `tests/integration/codegen_test.ts` (4 tests): `GET /codegen-status` shape,
+  `POST /codegen` 400 paths (missing body / missing startUrl), `POST /codegen`
+  200-or-409 gate behaviour.
+
 ## Known caveats to track
 
 1. **`deno desktop` requires Deno >= 2.9.0.** Now satisfied (running 2.9.5).

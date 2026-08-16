@@ -24,6 +24,10 @@ export function uploadsDir(): string {
   return `${co2RunnerHome()}/uploaded-journeys`;
 }
 
+export function recordedJourneysDir(): string {
+  return `${co2RunnerHome()}/recorded-journeys`;
+}
+
 export function defaultDbPath(): string {
   const env = Deno.env.get("CO2_RUNNER_DB");
   if (env) return env;

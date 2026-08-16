@@ -3,6 +3,7 @@ import {
   artefactsDir,
   co2RunnerHome,
   defaultDbPath,
+  recordedJourneysDir,
   uploadsDir,
 } from "../../ui/paths.ts";
 
@@ -39,6 +40,18 @@ Deno.test("uploadsDir resolves under co2RunnerHome", () => {
   Deno.env.set("CO2_RUNNER_HOME", "/tmp/custom-co2-home");
   try {
     assertEquals(uploadsDir(), "/tmp/custom-co2-home/uploaded-journeys");
+  } finally {
+    Deno.env.delete("CO2_RUNNER_HOME");
+  }
+});
+
+Deno.test("recordedJourneysDir resolves under co2RunnerHome", () => {
+  Deno.env.set("CO2_RUNNER_HOME", "/tmp/custom-co2-home");
+  try {
+    assertEquals(
+      recordedJourneysDir(),
+      "/tmp/custom-co2-home/recorded-journeys",
+    );
   } finally {
     Deno.env.delete("CO2_RUNNER_HOME");
   }

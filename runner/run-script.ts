@@ -18,6 +18,7 @@
 import { extname } from "path";
 import { parseEnergyProfile } from "./energy.ts";
 import { artefactsDir } from "../ui/paths.ts";
+import { DenoNotFoundError, findDenoBinary } from "../util/deno-bin.ts";
 import type { ResultsStore } from "../ui/results.ts";
 import type { JourneyResult } from "../types.ts";
 
@@ -48,7 +49,11 @@ export async function countTests(
   scriptPath: string,
   configPath: string,
 ): Promise<number> {
-  const cmd = new Deno.Command("deno", {
+  // Resolve the deno CLI binary; throws DenoNotFoundError if absent.
+  const denoBin = await findDenoBinary();
+  if (!denoBin) throw new DenoNotFoundError();
+
+  const cmd = new Deno.Command(denoBin, {
     args: [
       "run",
       "-A",
@@ -210,7 +215,10 @@ export async function runScript(
       message: "launching Firefox + running journey script...",
     });
 
-    const cmd = new Deno.Command("deno", {
+    const denoBin = await findDenoBinary();
+    if (!denoBin) throw new DenoNotFoundError();
+
+    const cmd = new Deno.Command(denoBin, {
       args: [
         "run",
         "-A",

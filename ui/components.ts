@@ -66,6 +66,47 @@ export function renderDashboard(): string {
       border: none; border-radius: 6px; cursor: pointer; font-weight: 600;
     }
     .run-form button:disabled { opacity: 0.5; cursor: not-allowed; }
+    #record-btn {
+      background: transparent; color: var(--warn);
+      border: 1px solid var(--warn);
+    }
+    #record-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+    #record-btn.recording {
+      background: var(--warn); color: #000;
+      animation: pulse 1.2s infinite;
+    }
+
+    /* Modal for codegen URL input */
+    .modal {
+      position: fixed; inset: 0; background: rgba(0,0,0,0.6);
+      display: flex; align-items: center; justify-content: center;
+      z-index: 100;
+    }
+    .modal.hidden { display: none; }
+    .modal-content {
+      background: var(--surface); border: 1px solid var(--border);
+      border-radius: 12px; padding: 1.5rem; max-width: 500px; width: 90%;
+    }
+    .modal-content h3 { margin: 0 0 0.5rem; color: var(--text); font-size: 1.1rem; }
+    .modal-hint { color: var(--muted); font-size: 0.85rem; margin: 0 0 1rem; line-height: 1.4; }
+    .modal-input {
+      width: 100%; box-sizing: border-box;
+      background: var(--bg); border: 1px solid var(--border);
+      color: var(--text); padding: 0.5rem 0.75rem; border-radius: 6px;
+      font-size: 0.9rem; margin-bottom: 1rem;
+    }
+    .modal-actions { display: flex; gap: 0.5rem; justify-content: flex-end; }
+    .modal-btn-secondary {
+      background: transparent; color: var(--muted);
+      border: 1px solid var(--border); border-radius: 6px;
+      padding: 0.5rem 1rem; cursor: pointer; font-weight: 600;
+    }
+    .modal-btn-primary {
+      background: var(--warn); color: #000;
+      border: none; border-radius: 6px;
+      padding: 0.5rem 1rem; cursor: pointer; font-weight: 600;
+    }
+    .modal-btn-primary:disabled { opacity: 0.5; cursor: not-allowed; }
 
     #status { color: var(--muted); font-size: 0.85rem; min-height: 1.5rem; }
     #results { display: grid; gap: 1rem; margin-top: 1rem; }
@@ -98,7 +139,31 @@ export function renderDashboard(): string {
       <span id="file-label-text">📄 Choose a journey YAML or codegen JS file…</span>
       <input id="journey-input" type="file" accept=".yaml,.yml,.js,.mjs,.ts" />
     </label>
+    <button id="record-btn">🔴 Record</button>
     <button id="run-btn" disabled>▶ Run Journey</button>
+  </div>
+
+  <!-- URL prompt modal for codegen recording -->
+  <div id="codegen-modal" class="modal hidden">
+    <div class="modal-content">
+      <h3>Record a new journey</h3>
+      <p class="modal-hint">
+        Enter the URL to start at. Playwright's Inspector will open in a new
+        Firefox window — click around the site as if you were a user. When you
+        close the Inspector, the recorded script will be saved and you can
+        pick it via the file picker to run.
+      </p>
+      <input
+        id="codegen-url-input"
+        type="url"
+        placeholder="https://branch.climateaction.tech/"
+        class="modal-input"
+      />
+      <div class="modal-actions">
+        <button id="codegen-cancel" class="modal-btn-secondary">Cancel</button>
+        <button id="codegen-start" class="modal-btn-primary" disabled>🔴 Start recording</button>
+      </div>
+    </div>
   </div>
   <div id="status"></div>
   <p><span class="history-toggle">Load history</span></p>

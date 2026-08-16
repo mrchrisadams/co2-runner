@@ -7,6 +7,8 @@ const evtSource = new EventSource("/events");
 
 let firefoxInstalled = false;
 let installInProgress = false;
+let codegenInProgress = false;
+let canCodegen = false;
 let selectedFile = null; // File object from <input type=file>
 
 evtSource.onmessage = (e) => {
@@ -29,6 +31,8 @@ evtSource.onmessage = (e) => {
     renderFirefoxStatus();
   } else if (ev.type === "install") {
     renderInstallEvent(ev.install);
+  } else if (ev.type === "codegen") {
+    renderCodegenEvent(ev.codegen);
   }
 };
 
@@ -74,6 +78,9 @@ function renderInstallEvent(p) {
     fetch("/firefox-status").then((r) => r.json()).then((j) => {
       firefoxInstalled = j.installed;
       renderFirefoxStatus();
+      // Also refresh codegen-ability: now that Firefox is installed,
+      // the Record button should enable (graphical env assumed).
+      refreshCodegenStatus();
     }).catch(() => {});
   } else if (p.phase === "error") {
     installInProgress = false;
@@ -195,6 +202,22 @@ document.getElementById("journey-input").addEventListener(
   onFilePicked,
 );
 document.getElementById("run-btn").addEventListener("click", startRun);
+document.getElementById("record-btn").addEventListener(
+  "click",
+  openCodegenModal,
+);
+document.getElementById("codegen-cancel").addEventListener(
+  "click",
+  closeCodegenModal,
+);
+document.getElementById("codegen-start").addEventListener(
+  "click",
+  startCodegen,
+);
+document.getElementById("codegen-url-input").addEventListener(
+  "input",
+  updateCodegenStartButton,
+);
 document.querySelector(".history-toggle").addEventListener(
   "click",
   loadHistory,
@@ -206,3 +229,92 @@ fetch("/firefox-status").then((r) => r.json()).then((j) => {
   firefoxInstalled = j.installed;
   renderFirefoxStatus();
 }).catch(() => {});
+
+// ── Codegen (record a journey) ────────────────────────────────────────
+
+function updateRecordButton() {
+  const btn = document.getElementById("record-btn");
+  btn.disabled = !canCodegen || codegenInProgress;
+  if (codegenInProgress) {
+    btn.classList.add("recording");
+    btn.textContent = "🔴 Recording…";
+  } else {
+    btn.classList.remove("recording");
+    btn.textContent = "🔴 Record";
+  }
+}
+
+async function refreshCodegenStatus() {
+  try {
+    const res = await fetch("/codegen-status");
+    const j = await res.json();
+    canCodegen = j.canCodegen;
+    codegenInProgress = j.codegenInProgress;
+    updateRecordButton();
+  } catch {
+    // server not reachable; nothing to do
+  }
+}
+
+function openCodegenModal() {
+  if (!canCodegen) {
+    if (!firefoxInstalled) {
+      setStatus("⚠️ Install Firefox first — codegen uses the same browser.");
+    } else {
+      setStatus("⚠️ codegen requires a graphical environment.");
+    }
+    return;
+  }
+  document.getElementById("codegen-modal").classList.remove("hidden");
+  document.getElementById("codegen-url-input").focus();
+}
+
+function closeCodegenModal() {
+  document.getElementById("codegen-modal").classList.add("hidden");
+}
+
+function updateCodegenStartButton() {
+  const url = document.getElementById("codegen-url-input").value.trim();
+  document.getElementById("codegen-start").disabled = !url;
+}
+
+async function startCodegen() {
+  const url = document.getElementById("codegen-url-input").value.trim();
+  if (!url) return;
+  closeCodegenModal();
+  setStatus("🔴 Launching Playwright codegen…");
+  try {
+    const res = await fetch("/codegen", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ startUrl: url }),
+    });
+    if (!res.ok) {
+      const j = await res.json().catch(() => ({ error: "request failed" }));
+      setStatus("⚠️ " + j.error);
+    }
+  } catch (err) {
+    setStatus("⚠️ " + err.message);
+  }
+}
+
+function renderCodegenEvent(p) {
+  if (p.phase === "starting") {
+    codegenInProgress = true;
+    updateRecordButton();
+    setStatus("📥 " + p.message);
+  } else if (p.phase === "recording") {
+    setStatus("🔴 Recording — " + p.message);
+  } else if (p.phase === "complete") {
+    codegenInProgress = false;
+    updateRecordButton();
+    setStatus("✅ " + p.message + " — pick the file via the picker to run it.");
+  } else if (p.phase === "error") {
+    codegenInProgress = false;
+    updateRecordButton();
+    setStatus("⚠️ " + p.message);
+  }
+}
+
+// Initial codegen-status check (refreshes on every install completion too).
+refreshCodegenStatus();

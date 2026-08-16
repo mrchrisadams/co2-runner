@@ -6,11 +6,16 @@ import {
   installBrowsersWithProgress,
   isFirefoxInstalled,
 } from "./runner/install.ts";
+import {
+  buildCodegenFilename,
+  hasGraphicalDisplay,
+  launchCodegen,
+} from "./runner/codegen.ts";
 import { runJourney } from "./runner/run.ts";
 import { ResultsStore, type StoreEvent } from "./ui/results.ts";
 import { renderDashboard } from "./ui/components.ts";
 import { History } from "./ui/history.ts";
-import { defaultDbPath, uploadsDir } from "./ui/paths.ts";
+import { defaultDbPath, recordedJourneysDir, uploadsDir } from "./ui/paths.ts";
 
 const args = Deno.args;
 const isServeMode = args[0] === "serve";
@@ -22,9 +27,14 @@ const USAGE = `co2-runner — measure real browser energy per user journey
 
 USAGE:
   co2-runner install                    Download Playwright's bundled Firefox
-  co2-runner run <journey.yaml>         Run a journey, emit energy figures
-  co2-runner serve                     Start the HTTP / desktop UI
-  co2-runner --help                     Show this message
+  co2-runner run <journey>               Run a journey, emit energy figures
+    <journey> may be:
+      .yaml / .yml                       declarative config
+      .js / .mjs / .ts                   Playwright codegen script
+  co2-runner codegen <url> [output.spec.js]
+                                         Record a journey via Playwright codegen
+  co2-runner serve                       Start the HTTP / desktop UI
+  co2-runner --help                      Show this message
 
 ENV:
   PORT                  HTTP port for serve mode (default 8000)
@@ -34,6 +44,8 @@ ENV:
 EXAMPLES:
   co2-runner install
   co2-runner run journeys/example.yaml
+  co2-runner run journeys/example.spec.js
+  co2-runner codegen https://branch.climateaction.tech/
   co2-runner serve
 `;
 
@@ -48,7 +60,10 @@ if (!isDesktopMode) {
     Deno.exit(1);
   }
 
-  if (args[0] !== "install" && args[0] !== "run" && args[0] !== "serve") {
+  if (
+    args[0] !== "install" && args[0] !== "run" && args[0] !== "serve" &&
+    args[0] !== "codegen"
+  ) {
     console.error(`unknown subcommand: ${args[0]}\n\n${USAGE}`);
     Deno.exit(1);
   }
@@ -86,6 +101,58 @@ if (args[0] === "run") {
     );
     Deno.exit(0);
   }
+}
+
+// ── CLI subcommand: codegen ─────────────────────────────────────────────────
+// `co2-runner codegen <url> [output.spec.js]` — launches Playwright Inspector
+// for the given URL, records the user's actions, writes the result to either
+// the user-supplied path or `~/.co2-runner/recorded-journeys/<auto-name>`.
+if (args[0] === "codegen") {
+  const startUrl = args[1];
+  if (!startUrl) {
+    console.error(
+      "Usage: co2-runner codegen <url> [output.spec.js]\n\n" + USAGE,
+    );
+    Deno.exit(1);
+  }
+
+  if (!await isFirefoxInstalled()) {
+    console.error(
+      "Firefox is not installed. Run `co2-runner install` first (one-time ~150MB download).",
+    );
+    Deno.exit(1);
+  }
+
+  if (!hasGraphicalDisplay()) {
+    console.error(
+      "codegen requires a graphical environment (DISPLAY or WAYLAND_DISPLAY on Linux; " +
+        "always available on macOS / Windows). Run co2-runner from a desktop session.",
+    );
+    Deno.exit(1);
+  }
+
+  // Output path: user-supplied, or auto-generated under recordedJourneysDir().
+  let outputPath: string;
+  if (args[2]) {
+    outputPath = await Deno.realPath(args[2]).catch(() => args[2]);
+  } else {
+    const dir = recordedJourneysDir();
+    await Deno.mkdir(dir, { recursive: true });
+    outputPath = `${dir}/${buildCodegenFilename(startUrl)}`;
+  }
+
+  console.log(`Recording journey at ${startUrl}...`);
+  console.log(`  → output: ${outputPath}`);
+  console.log("  Close the Playwright Inspector window when done.");
+  await launchCodegen({
+    startUrl,
+    outputPath,
+  });
+  console.log(`\n✅ Saved: ${outputPath}`);
+  console.log(
+    `Run it with: co2-runner run ${outputPath}`,
+  );
+  Deno.exit(0);
 }
 
 // ── HTTP server (dev + desktop modes) ───────────────────────────────────────
@@ -154,6 +221,87 @@ Deno.serve({ port, hostname }, async (req: Request) => {
       });
     return new Response(
       JSON.stringify({ started: true }),
+      { headers: { "content-type": "application/json" } },
+    );
+  }
+
+  if (url.pathname === "/codegen-status" && req.method === "GET") {
+    // Cheap pre-flight check the UI uses to decide whether to enable
+    // the "Record Journey" button. Returns whether Firefox is installed
+    // AND whether the current env has a graphical display (Linux without
+    // DISPLAY/WAYLAND_DISPLAY is headless and can't run codegen).
+    return new Response(
+      JSON.stringify({
+        canCodegen: store.firefoxInstalled && hasGraphicalDisplay(),
+        firefoxInstalled: store.firefoxInstalled,
+        hasGraphicalDisplay: hasGraphicalDisplay(),
+        codegenInProgress: store.codegenInProgress,
+      }),
+      { headers: { "content-type": "application/json" } },
+    );
+  }
+
+  if (url.pathname === "/codegen" && req.method === "POST") {
+    let body: { startUrl?: string };
+    try {
+      body = await req.json();
+    } catch {
+      return new Response(JSON.stringify({ error: "invalid JSON body" }), {
+        status: 400,
+        headers: { "content-type": "application/json" },
+      });
+    }
+    const startUrl = body.startUrl;
+    if (!startUrl) {
+      return new Response(JSON.stringify({ error: "startUrl required" }), {
+        status: 400,
+        headers: { "content-type": "application/json" },
+      });
+    }
+
+    // Gates: Firefox + graphical display. Surface as 409 with a clear
+    // message so the UI can guide the user (show install button if
+    // Firefox is missing, etc.).
+    if (!store.firefoxInstalled) {
+      return new Response(
+        JSON.stringify({
+          error:
+            "Firefox is not installed. Click 'Install Firefox' first — codegen uses the same browser as journeys.",
+        }),
+        { status: 409, headers: { "content-type": "application/json" } },
+      );
+    }
+    if (!hasGraphicalDisplay()) {
+      return new Response(
+        JSON.stringify({
+          error:
+            "codegen requires a graphical environment. Run co2-runner from a desktop session.",
+        }),
+        { status: 409, headers: { "content-type": "application/json" } },
+      );
+    }
+
+    // Output path: auto-generated under recordedJourneysDir(). The UI
+    // notifies the user of the path via the SSE 'complete' event; they
+    // then pick the file manually via the existing file picker to run
+    // it (answer 2 from the design Q&A).
+    const dir = recordedJourneysDir();
+    await Deno.mkdir(dir, { recursive: true });
+    const outputPath = `${dir}/${buildCodegenFilename(startUrl)}`;
+
+    // Spawn in the background; progress events flow through the SSE stream
+    // as 'codegen' events. The HTTP response returns immediately so the
+    // UI doesn't block until the user closes the Inspector.
+    launchCodegen({ startUrl, outputPath }, (p) => store.codegenProgress(p))
+      .catch((err) => {
+        console.error(`codegen failed: ${err.message}`);
+        store.codegenProgress({
+          phase: "error",
+          message: err.message,
+        });
+      });
+    return new Response(
+      JSON.stringify({ started: true, outputPath }),
       { headers: { "content-type": "application/json" } },
     );
   }

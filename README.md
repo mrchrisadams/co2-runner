@@ -32,13 +32,15 @@ deno task run
 ## Usage
 
 ```
-co2-runner install           Downloads Playwright's bundled Firefox
-co2-runner run <journey>      Runs a journey + emits energy figures
+co2-runner install              Downloads Playwright's bundled Firefox
+co2-runner run <journey>        Runs a journey + emits energy figures
   <journey> may be:
-    .yaml / .yml             — declarative config (see journeys/example.yaml)
-    .js / .mjs / .ts         — Playwright codegen script (see journeys/example.spec.js)
-co2-runner serve               Starts the desktop / HTTP UI
-co2-runner --help              Show usage
+    .yaml / .yml                — declarative config (see journeys/example.yaml)
+    .js / .mjs / .ts            — Playwright codegen script (see journeys/example.spec.js)
+co2-runner codegen <url> [output.spec.js]
+                                Record a new journey via Playwright codegen
+co2-runner serve                Starts the desktop / HTTP UI
+co2-runner --help               Show usage
 ```
 
 ## Journey formats
@@ -76,6 +78,52 @@ clear error message):
   next to the profile + HAR in `~/.co2-runner/journey-artefacts/`. If your
   script sets its own `test.use({ recordHar })` it overrides co2-runner's path —
   the captured HAR may not land where expected.
+
+Full-circle example:
+
+```sh
+# 1. Record
+./co2-runner codegen https://example.com/
+# (Playwright Inspector opens — click around, close Inspector when done)
+# ✅ Saved: ~/.co2-runner/recorded-journeys/2026-...-example.com.spec.js
+
+# 2. Run it
+./co2-runner run ~/.co2-runner/recorded-journeys/2026-...-example.com.spec.js
+# → 1.547 mWh  (5.569 J)
+```
+
+## Recording a journey from inside the app
+
+You don't need to run `playwright codegen` from a separate terminal — co2-runner
+integrates it directly. Two ways:
+
+**In the desktop app / web UI:** click the **🔴 Record** button next to the file
+picker. A modal prompts for the start URL. After you confirm, Playwright opens
+its Inspector window + a Firefox window directly on your desktop. Click / type /
+scroll around the site as if you were a real user. When you close the Inspector,
+the recorded script is saved to
+`~/.co2-runner/recorded-journeys/<timestamp>-<host>.spec.js`. Pick it via the
+file picker to run it.
+
+**In the CLI:**
+
+```sh
+co2-runner codegen https://branch.climateaction.tech/
+# → opens the Playwright Inspector
+# (close Inspector when done)
+# → ✅ Saved: ~/.co2-runner/recorded-journeys/2026-...-branch.climateaction.tech.spec.js
+# Run it with: co2-runner run ~/.co2-runner/recorded-journeys/2026-...-branch.climateaction.tech.spec.js
+```
+
+Optional second argument overrides the output path:
+
+```sh
+co2-runner codegen https://branch.climateaction.tech/ ./journeys/my-journey.spec.js
+```
+
+**Codegen gates on Firefox being installed** (same as Run Journey) and on a
+graphical environment being available (always true on macOS + Windows; on Linux
+requires `$DISPLAY` or `$WAYLAND_DISPLAY`).
 
 See `journeys/example.yaml` for the journey config format. Energy figures are
 persisted to `~/.co2-runner/history.db` (SQLite) for cross-run comparison.

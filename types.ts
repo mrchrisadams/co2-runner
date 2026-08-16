@@ -65,3 +65,10 @@ export interface InstallProgress {
   phase: "starting" | "downloading" | "complete" | "error";
   message: string;
 }
+
+export interface CodegenProgress {
+  phase: "starting" | "recording" | "complete" | "error";
+  /** Absolute path of the recorded .spec.js (set on 'complete'). */
+  outputPath?: string;
+  message: string;
+}
