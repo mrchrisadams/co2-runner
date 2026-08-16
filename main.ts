@@ -15,7 +15,13 @@ import { runJourney } from "./runner/run.ts";
 import { ResultsStore, type StoreEvent } from "./ui/results.ts";
 import { renderDashboard } from "./ui/components.ts";
 import { History } from "./ui/history.ts";
-import { defaultDbPath, recordedJourneysDir, uploadsDir } from "./ui/paths.ts";
+import {
+  co2RunnerHome,
+  defaultDbPath,
+  recordedJourneysDir,
+  uploadsDir,
+} from "./ui/paths.ts";
+import { gridIntensityEntries } from "./runner/co2.ts";
 
 const args = Deno.args;
 const isServeMode = args[0] === "serve";
@@ -480,6 +486,45 @@ Deno.serve({ port, hostname }, async (req: Request) => {
     return new Response(JSON.stringify(history.recent(limit)), {
       headers: { "content-type": "application/json" },
     });
+  }
+
+  if (url.pathname === "/grid-intensities" && req.method === "GET") {
+    // Returns the full list of grid-intensity entries (WORLD first, then
+    // regional averages, then per-country average + marginal). Cached on
+    // the server side after first call. Used by the dashboard to populate
+    // the per-card carbon-intensity dropdown.
+    return new Response(
+      JSON.stringify({ entries: gridIntensityEntries() }),
+      { headers: { "content-type": "application/json" } },
+    );
+  }
+
+  if (url.pathname === "/open-home" && req.method === "POST") {
+    // Open the co2-runner home directory (~/.co2-runner/ or
+    // $CO2_RUNNER_HOME) in the OS file manager — `open` on macOS,
+    // `xdg-open` on Linux, `explorer` on Windows. Makes it easy to
+    // find recorded journeys / artefacts without needing to know how
+    // to navigate to a hidden directory in Finder.
+    const dir = co2RunnerHome();
+    try {
+      const cmd = Deno.build.os === "darwin"
+        ? new Deno.Command("open", { args: [dir] })
+        : Deno.build.os === "linux"
+        ? new Deno.Command("xdg-open", { args: [dir] })
+        : new Deno.Command("explorer", { args: [dir] });
+      await cmd.spawn().status;
+    } catch (err) {
+      return new Response(
+        JSON.stringify({
+          error: `could not open ${dir}: ${(err as Error).message}`,
+        }),
+        { status: 500, headers: { "content-type": "application/json" } },
+      );
+    }
+    return new Response(
+      JSON.stringify({ opened: dir }),
+      { headers: { "content-type": "application/json" } },
+    );
   }
 
   return new Response("Not found", { status: 404 });

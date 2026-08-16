@@ -153,16 +153,54 @@ async function startRun() {
 }
 
 // ── Result card rendering ────────────────────────────────────────────────
+//
+// Each card has a grid-intensity dropdown that updates the CO2e metric
+// client-side. The intensity entries are fetched once from
+// /grid-intensities (cached in the gridIntensities global) and cloned
+// into each card.
+
+let gridIntensities = []; // Array of { code, label, intensity, source }
+
+async function ensureGridIntensitiesLoaded() {
+  if (gridIntensities.length > 0) return;
+  try {
+    const res = await fetch("/grid-intensities");
+    const j = await res.json();
+    gridIntensities = j.entries ?? [];
+  } catch {
+    // network error — leave gridIntensities empty; CO2e will show as '—'
+  }
+}
 
 function addResultCard(r) {
   const card = document.createElement("div");
   card.className = "result-card";
   card.innerHTML = renderResultCard(r);
   document.getElementById("results").prepend(card);
+  // Wire up the grid-intensity dropdown on the freshly-added card.
+  // Finds the <select> via its DOM reference under this card.
+  const select = card.querySelector(".grid-select");
+  if (select) {
+    select.addEventListener(
+      "change",
+      () => updateCardCO2e(card, r.mWh, select.value),
+    );
+    // Compute initial CO2e using the default selection (WORLD).
+    updateCardCO2e(card, r.mWh, select.value);
+  }
   setStatus("");
 }
 
 function renderResultCard(r) {
+  // Build the <option> list from gridIntensities. Falls back to a single
+  // WORLD-avg option if the data hasn't loaded yet (the populateGridOptions
+  // call below fills in the rest on async load).
+  const options = gridIntensities.length > 0
+    ? gridIntensities.map((e) =>
+      `<option value="${e.intensity}">${e.label} (${e.intensity} gCO₂/kWh)</option>`
+    ).join("")
+    : `<option value="472.94">World average (Ember) (472.94 gCO₂/kWh)</option>`;
+
   return `
     <div class="result-name">${r.name}</div>
     <div class="result-metrics">
@@ -174,9 +212,35 @@ function renderResultCard(r) {
         <div class="metric-value">${r.joules.toFixed(4)}</div>
         <div class="metric-label">Joules</div>
       </div>
+      <div>
+        <div class="metric-value co2e" data-co2e>—</div>
+        <div class="metric-label">
+          gCO₂e
+          <select class="grid-select" title="Grid intensity">${options}</select>
+        </div>
+      </div>
     </div>
     <div class="result-time">${new Date(r.timestamp).toLocaleString()}</div>
   `;
+}
+
+function updateCardCO2e(card, mWh, intensityStr) {
+  const intensity = parseFloat(intensityStr);
+  // Convert: Wh → gCO2e = Wh × (gCO2/kWh) / 1000.
+  // r.mWh is milliwatt-hours; we want watt-hours → divide by 1000.
+  const wh = mWh / 1000;
+  const gramsCO2e = (wh * intensity) / 1000;
+  // Micrograms (the figure is tiny — usually < 0.01 g for a 2 mWh journey).
+  // Pick the most readable unit: µg, mg, or g depending on magnitude.
+  const el = card.querySelector("[data-co2e]");
+  if (!el) return;
+  if (gramsCO2e < 0.001) {
+    el.textContent = (gramsCO2e * 1_000_000).toFixed(2) + " µg";
+  } else if (gramsCO2e < 1) {
+    el.textContent = (gramsCO2e * 1000).toFixed(2) + " mg";
+  } else {
+    el.textContent = gramsCO2e.toFixed(4) + " g";
+  }
 }
 
 function setStatus(msg) {
@@ -188,7 +252,26 @@ function setStatus(msg) {
 async function loadHistory() {
   const res = await fetch("/history?limit=20");
   const runs = await res.json();
+  // Clear existing cards before appending — previous behaviour appended
+  // duplicates every time the button was clicked.
+  document.getElementById("results").innerHTML = "";
   runs.reverse().forEach(addResultCard);
+}
+
+// ── Open co2-runner home directory ───────────────────────────────────────
+
+async function openHome() {
+  try {
+    const res = await fetch("/open-home", { method: "POST" });
+    const j = await res.json();
+    if (res.ok) {
+      setStatus(`📂 Opened ${j.opened} in Finder`);
+    } else {
+      setStatus("⚠️ " + (j.error ?? "could not open directory"));
+    }
+  } catch (err) {
+    setStatus("⚠️ " + err.message);
+  }
 }
 
 // ── Wire up event listeners ──────────────────────────────────────────────
@@ -218,9 +301,13 @@ document.getElementById("codegen-url-input").addEventListener(
   "input",
   updateCodegenStartButton,
 );
-document.querySelector(".history-toggle").addEventListener(
+document.getElementById("load-history-link").addEventListener(
   "click",
   loadHistory,
+);
+document.getElementById("open-home-link").addEventListener(
+  "click",
+  openHome,
 );
 
 // If we loaded before the first firefox-status broadcast arrived,
@@ -229,6 +316,12 @@ fetch("/firefox-status").then((r) => r.json()).then((j) => {
   firefoxInstalled = j.installed;
   renderFirefoxStatus();
 }).catch(() => {});
+
+// Prefetch grid intensity data in the background so the first result-card
+// render has it ready. If it loads after a card is already displayed, the
+// card will show the default WORLD value; users can manually re-pick from
+// the dropdown after the page is interactive.
+ensureGridIntensitiesLoaded();
 
 // ── Codegen (record a journey) ────────────────────────────────────────
 

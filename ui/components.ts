@@ -117,11 +117,19 @@ export function renderDashboard(): string {
     }
     @keyframes fadeIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; } }
     .result-name { font-weight: 600; margin-bottom: 0.5rem; }
-    .result-metrics { display: flex; gap: 2rem; }
+    .result-metrics { display: flex; gap: 2rem; flex-wrap: wrap; }
     .metric-value { font-size: 1.8rem; font-weight: 700; color: var(--accent); }
+    .metric-value.co2e { color: var(--warn); }
     .metric-label { font-size: 0.75rem; color: var(--muted); }
+    .metric-label .grid-select {
+      background: var(--bg); color: var(--muted); border: 1px solid var(--border);
+      border-radius: 4px; padding: 0.1rem 0.3rem; font-size: 0.7rem;
+      margin-top: 0.25rem; max-width: 220px;
+    }
     .result-time { font-size: 0.75rem; color: var(--muted); margin-top: 0.5rem; }
-    .history-toggle { color: var(--accent); cursor: pointer; text-decoration: underline; font-size: 0.85rem; }
+    .action-row { margin: 0.5rem 0 0; display: flex; gap: 1rem; font-size: 0.85rem; }
+    .action-link { color: var(--accent); cursor: pointer; text-decoration: underline; }
+    .action-link:hover { color: #6ee7a3; }
   </style>
 </head>
 <body>
@@ -166,7 +174,10 @@ export function renderDashboard(): string {
     </div>
   </div>
   <div id="status"></div>
-  <p><span class="history-toggle">Load history</span></p>
+  <div class="action-row">
+    <span class="action-link" id="load-history-link">Load history</span>
+    <span class="action-link" id="open-home-link">📂 Open co2-runner home directory</span>
+  </div>
   <div id="results"></div>
 
   <script>
