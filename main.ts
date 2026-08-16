@@ -59,6 +59,10 @@ Deno.serve({ port }, async (req: Request) => {
     });
   }
 
+  if (url.pathname === "/favicon.ico" && req.method === "GET") {
+    return new Response(null, { status: 204 });
+  }
+
   if (url.pathname === "/events" && req.method === "GET") {
     const { readable, writable } = new TransformStream();
     const writer = writable.getWriter();

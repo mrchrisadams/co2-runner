@@ -11,3 +11,4 @@ main-*
 co2-runner
 co2-runner-*
 screenshots/
+.playwright-cli/

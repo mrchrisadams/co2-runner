@@ -28,5 +28,17 @@
   },
   "npmLifecycleScripts": {
     "playwright": true
+  },
+  "lint": {
+    "rules": {
+      "exclude": [
+        "no-explicit-any",
+        "no-import-prefix",
+        "no-unversioned-import",
+        "verbatim-module-syntax",
+        "no-empty",
+        "require-await"
+      ]
+    }
   }
 }

@@ -1,4 +1,4 @@
-import { assert, assertEquals, assertStringIncludes } from "jsr:@std/assert";
+import { assertStringIncludes } from "jsr:@std/assert";
 import { renderDashboard } from "../../ui/components.ts";
 
 Deno.test("renderDashboard produces a complete HTML document", () => {
