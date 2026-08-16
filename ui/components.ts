@@ -3,8 +3,6 @@
 // results + progress and lets the user kick off a journey via POST /run.
 
 export function renderDashboard(): string {
-
-
   return /* html */ `<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -51,10 +49,10 @@ export function renderDashboard(): string {
 
   <div class="run-form">
     <input id="journey-input" type="text" placeholder="Path to journey YAML (e.g. journeys/example.yaml)" />
-    <button id="run-btn" onclick="startRun()">▶ Run Journey</button>
+    <button id="run-btn">▶ Run Journey</button>
   </div>
   <div id="status"></div>
-  <p><span class="history-toggle" onclick="loadHistory()">Load history</span></p>
+  <p><span class="history-toggle">Load history</span></p>
   <div id="results"></div>
 
   <script src="/dashboard.js"></script>

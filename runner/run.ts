@@ -6,16 +6,38 @@ import { parse as parseYaml } from "yaml";
 import { parseEnergyProfile } from "./energy.ts";
 import { artefactsDir } from "../ui/paths.ts";
 import type { ResultsStore } from "../ui/results.ts";
-import type { JourneyConfig, JourneyResult, Step } from "../types.ts";
+import type { JourneyConfig, JourneyResult, PageLike, Step } from "../types.ts";
 
 const slugify = (s: string) => s.replace(/\s+/g, "-");
+
+function validateConfig(raw: unknown, source: string): JourneyConfig {
+  const o = raw as Record<string, unknown>;
+  if (typeof o?.name !== "string") {
+    throw new Error(`journey ${source}: missing or non-string 'name' field`);
+  }
+  if (!Array.isArray(o?.steps)) {
+    throw new Error(`journey ${source}: 'steps' must be an array`);
+  }
+  if (o.steps.length === 0) {
+    throw new Error(`journey ${source}: 'steps' array is empty`);
+  }
+  for (let i = 0; i < o.steps.length; i++) {
+    const s = (o.steps as unknown[])[i] as Record<string, unknown>;
+    if (typeof s?.action !== "string") {
+      throw new Error(
+        `journey ${source}: step ${i} missing or non-string 'action'`,
+      );
+    }
+  }
+  return o as unknown as JourneyConfig;
+}
 
 export async function runJourney(
   journeyPath: string,
   store?: ResultsStore,
 ): Promise<JourneyResult> {
   const raw = await Deno.readTextFile(journeyPath);
-  const config: JourneyConfig = parseYaml(raw);
+  const config = validateConfig(parseYaml(raw), journeyPath);
 
   if (config.browser && config.browser !== "firefox") {
     throw new Error(
@@ -78,7 +100,10 @@ export async function runJourney(
 }
 
 // exported for unit testing with an injected page-like object.
-export async function executeStep(page: any, step: Step): Promise<void> {
+export async function executeStep(
+  page: PageLike,
+  step: Step,
+): Promise<void> {
   const rand = (a: number, b: number) =>
     Math.floor(Math.random() * (b - a + 1)) + a;
 

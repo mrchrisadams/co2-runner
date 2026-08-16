@@ -1,6 +1,10 @@
 // Builds synthetic Firefox profiler profile JSON objects for testing.
 // Mirrors the structure parseEnergyProfile consumes.
 
+// Re-exported from the production module so there is a single source of
+// truth for the picoWatt-hour conversion constants.
+export { PWH_TO_JOULES, PWH_TO_MWH } from "../../runner/energy.ts";
+
 export interface CounterSample {
   time: number;
   value: number;
@@ -41,8 +45,3 @@ export function buildProfile(
     })),
   };
 }
-
-// totalPWh is divided by 1e9 to get mWh, and multiplied by 3.6e-9
-// to get joules. So 1e9 pWh → 1 mWh → 0.0036 J.
-export const PWH_TO_MWH = 1e-9;
-export const PWH_TO_JOULES = 3.6e-9;

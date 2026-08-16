@@ -15,7 +15,7 @@
     "serve": "deno run -A --unsafe-proto main.ts serve",
     "install": "deno run -A --unsafe-proto main.ts install",
     "run": "deno run -A --unsafe-proto main.ts run journeys/example.yaml",
-    "test": "deno test --allow-read --allow-write --allow-env --allow-run --allow-net",
+    "test": "deno test --allow-read --allow-write --allow-env --allow-run --allow-net --allow-sys",
     "check": "deno check .",
     "lint": "deno lint",
     "compile": "deno compile -A --unsafe-proto --include npm:playwright --output co2-runner main.ts",
@@ -31,7 +31,7 @@
     },
     "backend": "webview",
     "output": {
-      "macos": "./dist/CO2Runner.app",
+      "macos": "./dist/CO2Runner.dmg",
       "windows": "./dist/CO2Runner",
       "linux": "./dist/co2-runner"
     }

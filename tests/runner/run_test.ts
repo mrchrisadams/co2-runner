@@ -1,16 +1,18 @@
 import { assertEquals } from "jsr:@std/assert";
 import { executeStep } from "../../runner/run.ts";
 import { MockPage } from "../fixtures/mock_page.ts";
-import type { Step } from "../../types.ts";
+import type { PageLike, Step } from "../../types.ts";
 
 Deno.test("executeStep: goto waits for load state", async () => {
-  const page = new MockPage();
-  await executeStep(page as any, {
+  const page: PageLike = new MockPage();
+  const step: Step = {
     action: "goto",
     url: "https://example.com",
     waitFor: "networkidle",
-  } as Step);
-  assertEquals(page.calls, [
+  };
+  await executeStep(page, step);
+  const calls = (page as unknown as MockPage).calls;
+  assertEquals(calls, [
     { method: "goto", args: ["https://example.com"] },
     { method: "waitForLoadState", args: ["networkidle"] },
   ]);
@@ -18,11 +20,12 @@ Deno.test("executeStep: goto waits for load state", async () => {
 
 Deno.test("executeStep: click waits for domcontentloaded", async () => {
   const page = new MockPage();
-  await executeStep(page as any, {
+  const step: Step = {
     action: "click",
     selector: "role=link[name='Next']",
     waitFor: "domcontentloaded",
-  } as Step);
+  };
+  await executeStep(page, step);
   const loc = page.locator("role=link[name='Next']");
   assertEquals(loc.calls.map((c) => c.method), ["click"]);
   assertEquals(page.calls.map((c) => c.method), ["waitForLoadState"]);
@@ -30,21 +33,20 @@ Deno.test("executeStep: click waits for domcontentloaded", async () => {
 
 Deno.test("executeStep: fill passes value to locator", async () => {
   const page = new MockPage();
-  await executeStep(page as any, {
+  const step: Step = {
     action: "fill",
     selector: "#search",
     value: "carbon",
-  } as Step);
+  };
+  await executeStep(page, step);
   const loc = page.locator("#search");
   assertEquals(loc.calls, [{ method: "fill", args: ["carbon"] }]);
 });
 
 Deno.test("executeStep: non-human scroll uses window.scrollBy", async () => {
   const page = new MockPage();
-  await executeStep(page as any, {
-    action: "scroll",
-    distance: 500,
-  } as Step);
+  const step: Step = { action: "scroll", distance: 500 };
+  await executeStep(page, step);
   assertEquals(page.calls, [
     { method: "evaluate", args: ["window.scrollBy(0, 500)"] },
   ]);
@@ -52,11 +54,8 @@ Deno.test("executeStep: non-human scroll uses window.scrollBy", async () => {
 
 Deno.test("executeStep: human scroll issues multiple wheel events covering distance", async () => {
   const page = new MockPage();
-  await executeStep(page as any, {
-    action: "scroll",
-    distance: 600,
-    human: true,
-  } as Step);
+  const step: Step = { action: "scroll", distance: 600, human: true };
+  await executeStep(page, step);
 
   const wheelCalls = page.mouse.calls;
   const totalScrolled = wheelCalls.reduce(
@@ -69,11 +68,8 @@ Deno.test("executeStep: human scroll issues multiple wheel events covering dista
 
 Deno.test("executeStep: negative human scroll respects direction", async () => {
   const page = new MockPage();
-  await executeStep(page as any, {
-    action: "scroll",
-    distance: -300,
-    human: true,
-  } as Step);
+  const step: Step = { action: "scroll", distance: -300, human: true };
+  await executeStep(page, step);
   const wheelCalls = page.mouse.calls;
   assertEquals(wheelCalls.every((c) => (c.args[1] as number) <= 0), true);
   const totalScrolled = wheelCalls.reduce(
@@ -85,16 +81,18 @@ Deno.test("executeStep: negative human scroll respects direction", async () => {
 
 Deno.test("executeStep: wait calls waitForTimeout with given ms", async () => {
   const page = new MockPage();
-  await executeStep(page as any, { action: "wait", ms: 120 } as Step);
+  const step: Step = { action: "wait", ms: 120 };
+  await executeStep(page, step);
   assertEquals(page.totalWaitMs(), 120);
 });
 
 Deno.test("executeStep: waitForSelector calls locator.waitFor with visible state", async () => {
   const page = new MockPage();
-  await executeStep(page as any, {
+  const step: Step = {
     action: "waitForSelector",
     selector: "#loaded",
-  } as Step);
+  };
+  await executeStep(page, step);
   // locator is created and .waitFor called; recorded on the locator itself.
   const loc = page.locator("#loaded");
   assertEquals(loc.calls.length, 1);

@@ -1,9 +1,5 @@
 import { assertEquals } from "jsr:@std/assert";
-import {
-  artefactsDir,
-  co2RunnerHome,
-  defaultDbPath,
-} from "../../ui/paths.ts";
+import { artefactsDir, co2RunnerHome, defaultDbPath } from "../../ui/paths.ts";
 
 Deno.test("co2RunnerHome honours CO2_RUNNER_HOME env", () => {
   Deno.env.set("CO2_RUNNER_HOME", "/tmp/custom-co2-home");

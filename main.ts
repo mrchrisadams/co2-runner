@@ -1,5 +1,6 @@
 // main.ts — CLI subcommand router + HTTP server.
 
+import { isAbsolute, relative, resolve } from "path";
 import { installBrowsers } from "./runner/install.ts";
 import { runJourney } from "./runner/run.ts";
 import { ResultsStore, type StoreEvent } from "./ui/results.ts";
@@ -91,8 +92,24 @@ function sseEncode(event: StoreEvent): string {
   return `data: ${JSON.stringify(event)}\n\n`;
 }
 
+// Resolve a client-supplied journey path against the journeys/ root and
+// refuse anything that escapes it. Prevents the /run endpoint from being
+// used as a path-traversal primitive (e.g. POST /run {"journey":"../../etc/passwd"}).
+// Absolute paths outside JOURNEYS_ROOT are also rejected.
+const JOURNEYS_ROOT = resolve(Deno.cwd(), "journeys");
+
+function safeJourneyPath(input: string): string | null {
+  const resolved = isAbsolute(input) ? input : resolve(JOURNEYS_ROOT, input);
+  const rel = relative(JOURNEYS_ROOT, resolved);
+  if (rel.startsWith("..") || isAbsolute(rel)) return null;
+  return resolved;
+}
+
 const port = parseInt(Deno.env.get("PORT") ?? "8000", 10);
-Deno.serve({ port }, async (req: Request) => {
+// Bind to loopback only: the /run endpoint can read journey files from disk,
+// so we don't want to expose it to other hosts on the network.
+const hostname = "127.0.0.1";
+Deno.serve({ port, hostname }, async (req: Request) => {
   const url = new URL(req.url);
 
   if (url.pathname === "/dashboard.js" && req.method === "GET") {
@@ -103,7 +120,6 @@ Deno.serve({ port }, async (req: Request) => {
   }
 
   if (url.pathname === "/" && req.method === "GET") {
-
     return new Response(renderDashboard(), {
       headers: { "content-type": "text/html; charset=utf-8" },
     });
@@ -125,14 +141,28 @@ Deno.serve({ port }, async (req: Request) => {
       );
     }
 
-    const unsubscribe = store.subscribe((event) => {
-      writer.write(encoder.encode(sseEncode(event)));
+    const unsubscribe = store.subscribe(async (event) => {
+      try {
+        await writer.write(encoder.encode(sseEncode(event)));
+      } catch {
+        // writer is closed (client gone) — self-cleanup to avoid leaks
+        unsubscribe();
+        try {
+          await writer.close();
+        } catch {
+          // already closed
+        }
+      }
     });
 
     // close the stream when the client disconnects
     req.signal?.addEventListener("abort", () => {
       unsubscribe();
-      writer.close();
+      try {
+        writer.close();
+      } catch {
+        // writer may already be closed by the subscriber's self-cleanup
+      }
     });
 
     return new Response(readable, {
@@ -161,7 +191,20 @@ Deno.serve({ port }, async (req: Request) => {
         headers: { "content-type": "application/json" },
       });
     }
-    runJourney(journey, store)
+    const safePath = safeJourneyPath(journey);
+    if (!safePath) {
+      return new Response(
+        JSON.stringify({
+          error:
+            "journey path must resolve inside the journeys/ directory (path traversal blocked)",
+        }),
+        {
+          status: 400,
+          headers: { "content-type": "application/json" },
+        },
+      );
+    }
+    runJourney(safePath, store)
       .then((result) => {
         try {
           history.insert(result);

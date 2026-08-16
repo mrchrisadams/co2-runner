@@ -8,6 +8,7 @@ import type { JourneyResult } from "../types.ts";
 
 interface ProfilerCounter {
   category: string;
+  // Each sample is [timestamp, picoWattHours]; we only consume the value slot.
   samples: { data: Array<[unknown, number]> };
 }
 
@@ -15,6 +16,11 @@ interface ProfilerProfile {
   counters?: ProfilerCounter[];
   processes?: Array<{ counters?: ProfilerCounter[] }>;
 }
+
+// Conversion constants — single source of truth (imported by test fixtures).
+// 1 picoWatt-hour = 1e-9 milliWatt-hours = 3.6e-9 Joules.
+export const PWH_TO_MWH = 1e-9;
+export const PWH_TO_JOULES = 3.6e-9;
 
 export async function parseEnergyProfile(
   profilePath: string,
@@ -45,8 +51,8 @@ export async function parseEnergyProfile(
     0,
   );
 
-  const mWh = totalPWh / 1e9;
-  const joules = totalPWh * 3.6e-9;
+  const mWh = totalPWh * PWH_TO_MWH;
+  const joules = totalPWh * PWH_TO_JOULES;
   const timestamp = new Date().toISOString();
 
   return { name: journeyName, mWh, joules, timestamp, profilePath };

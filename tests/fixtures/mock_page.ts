@@ -1,5 +1,7 @@
 // Mock page interface for exercising executeStep without launching Firefox.
 
+import type { LoadState } from "../../types.ts";
+
 export interface RecordedCall {
   method: string;
   args: unknown[];
@@ -21,7 +23,7 @@ export class MockLocator {
   async fill(value: string): Promise<void> {
     this.calls.push({ method: "fill", args: [value] });
   }
-  async waitFor(opts: unknown): Promise<void> {
+  async waitFor(opts?: { state?: string; timeout?: number }): Promise<void> {
     this.calls.push({ method: "waitFor", args: [opts] });
   }
 }
@@ -43,7 +45,7 @@ export class MockPage {
   async goto(url: string): Promise<void> {
     this.calls.push({ method: "goto", args: [url] });
   }
-  async waitForLoadState(state: string): Promise<void> {
+  async waitForLoadState(state?: LoadState): Promise<void> {
     this.calls.push({ method: "waitForLoadState", args: [state] });
   }
   async waitForTimeout(ms: number): Promise<void> {

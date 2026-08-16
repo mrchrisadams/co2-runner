@@ -2,17 +2,23 @@ const evtSource = new EventSource("/events");
 evtSource.onmessage = (e) => {
   const ev = JSON.parse(e.data);
   if (ev.type === "result") addResultCard(ev.result);
-  else if (ev.type === "progress") setStatus(`⏳ Step ${ev.progress.stepIndex + 1}/${ev.progress.totalSteps}: ${ev.progress.action}`);
+  else if (ev.type === "progress") {
+    setStatus(
+      `⏳ Step ${
+        ev.progress.stepIndex + 1
+      }/${ev.progress.totalSteps}: ${ev.progress.action}`,
+    );
+  }
 };
 
 function addResultCard(r) {
   const card = document.createElement("div");
   card.className = "result-card";
-  
+
   // We can't use the template literal as defined above directly because it uses 'r'.
   // Let's make it a function instead for better clarity and to avoid scoping issues.
   card.innerHTML = renderResultCard(r);
-  
+
   document.getElementById("results").prepend(card);
   setStatus("");
 }
@@ -34,7 +40,9 @@ function renderResultCard(r) {
   `;
 }
 
-function setStatus(msg) { document.getElementById("status").textContent = msg; }
+function setStatus(msg) {
+  document.getElementById("status").textContent = msg;
+}
 
 async function startRun() {
   const journey = document.getElementById("journey-input").value.trim();
@@ -46,7 +54,7 @@ async function startRun() {
     const res = await fetch("/run", {
       method: "POST",
       body: JSON.stringify({ journey }),
-      headers: { "content-type": "application/json" }
+      headers: { "content-type": "application/json" },
     });
     if (res.ok) setStatus("🚀 Journey started — results will appear below");
   } finally {
@@ -59,3 +67,9 @@ async function loadHistory() {
   const runs = await res.json();
   runs.reverse().forEach(addResultCard);
 }
+
+document.getElementById("run-btn").addEventListener("click", startRun);
+document.querySelector(".history-toggle").addEventListener(
+  "click",
+  loadHistory,
+);
