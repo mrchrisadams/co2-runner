@@ -15,7 +15,7 @@ steps:
     ms: 3000
 
   - action: click
-    selector: "role=link[name='Go to issue']"
+    selector: "role=link[name='Go to issue 9']"
     waitFor: domcontentloaded
 
   - action: scroll

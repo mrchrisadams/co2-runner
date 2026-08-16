@@ -1,7 +1,7 @@
 // ui/results.ts — in-memory store for journey results + progress.
 // Mirrors to subscribers via a callback list (used by the SSE endpoint).
 
-import type { JourneyResult, JourneyProgress } from "../types.ts";
+import type { JourneyProgress, JourneyResult } from "../types.ts";
 
 type Subscriber = (event: StoreEvent) => void;
 

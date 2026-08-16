@@ -11,19 +11,29 @@
     "sqlite": "node:sqlite"
   },
   "tasks": {
-    "dev": "deno run -A --watch main.ts serve",
-    "serve": "deno run -A main.ts serve",
-    "install": "deno run -A main.ts install",
-    "run": "deno run -A main.ts run journeys/example.yaml",
+    "dev": "deno run -A --unsafe-proto --watch main.ts serve",
+    "serve": "deno run -A --unsafe-proto main.ts serve",
+    "install": "deno run -A --unsafe-proto main.ts install",
+    "run": "deno run -A --unsafe-proto main.ts run journeys/example.yaml",
     "test": "deno test --allow-read --allow-write --allow-env --allow-run --allow-net",
     "check": "deno check .",
-    "lint": "deno lint"
+    "lint": "deno lint",
+    "compile": "deno compile -A --unsafe-proto --include npm:playwright --output co2-runner main.ts",
+    "compile:all": "deno compile -A --unsafe-proto --include npm:playwright --target x86_64-apple-darwin --output co2-runner-x86_64-apple-darwin main.ts && deno compile -A --unsafe-proto --include npm:playwright --target aarch64-apple-darwin --output co2-runner-aarch64-apple-darwin main.ts && deno compile -A --unsafe-proto --include npm:playwright --target x86_64-unknown-linux-gnu --output co2-runner-x86_64-unknown-linux-gnu main.ts && deno compile -A --unsafe-proto --include npm:playwright --target x86_64-pc-windows-msvc --output co2-runner-x86_64-pc-windows-msvc.exe main.ts",
+    "desktop": "deno desktop -A --unsafe-proto --backend webview main.ts",
+    "desktop:dev": "deno desktop -A --unsafe-proto --hmr --backend webview main.ts",
+    "desktop:all": "deno desktop -A --unsafe-proto --backend webview --all-targets main.ts"
   },
   "desktop": {
-    "window": {
-      "title": "CO2 Runner",
-      "width": 1024,
-      "height": 700
+    "app": {
+      "name": "CO2 Runner",
+      "identifier": "com.tgwf.co2runner"
+    },
+    "backend": "webview",
+    "output": {
+      "macos": "./dist/CO2Runner.app",
+      "windows": "./dist/CO2Runner",
+      "linux": "./dist/co2-runner"
     }
   },
   "npmLifecycleScripts": {
@@ -40,5 +50,8 @@
         "require-await"
       ]
     }
+  },
+  "fmt": {
+    "exclude": ["cruft/", "screenshots/", "dist/"]
   }
 }

@@ -1,5 +1,6 @@
 import { assertEquals } from "jsr:@std/assert";
-import { History, defaultDbPath } from "../../ui/history.ts";
+import { History } from "../../ui/history.ts";
+import { defaultDbPath } from "../../ui/paths.ts";
 import type { JourneyResult } from "../../types.ts";
 
 const sample = (i: number): JourneyResult => ({

@@ -1,0 +1,98 @@
+name: build
+
+on:
+  push:
+    branches: [main]
+    tags: ["v*"]
+  pull_request:
+    branches: [main]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: denoland/setup-deno@v2
+        with:
+          deno-version: v2.9.x
+      - run: deno --version
+      - run: deno fmt --check
+      - run: deno lint
+      - run: deno check .
+      - run: deno test --allow-all
+
+  build-cli:
+    needs: test
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-13
+            target: x86_64-apple-darwin
+            artifact: co2-runner-x86_64-apple-darwin
+          - os: macos-14
+            target: aarch64-apple-darwin
+            artifact: co2-runner-aarch64-apple-darwin
+          - os: ubuntu-22.04
+            target: x86_64-unknown-linux-gnu
+            artifact: co2-runner-x86_64-unknown-linux-gnu
+          - os: windows-latest
+            target: x86_64-pc-windows-msvc
+            artifact: co2-runner-x86_64-pc-windows-msvc.exe
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: denoland/setup-deno@v2
+        with:
+          deno-version: v2.9.x
+      - name: Build CLI binary
+        run: deno compile -A --unsafe-proto --include npm:playwright --target ${{ matrix.target }} --output ${{ matrix.artifact }} main.ts
+      - name: Smoke-test --help (unix)
+        if: runner.os != 'Windows'
+        run: ./${{ matrix.artifact }} --help
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact }}
+          path: ${{ matrix.artifact }}
+          if-no-files-found: error
+
+  build-desktop:
+    needs: test
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v4
+      - uses: denoland/setup-deno@v2
+        with:
+          deno-version: v2.9.x
+      - name: Build desktop bundle (aarch64-apple-darwin only)
+        run: deno task desktop
+      - name: Verify app bundle exists
+        run: test -d dist/CO2Runner.app
+      - name: Zip app bundle for upload
+        run: ditto -c -k --keepParent dist/CO2Runner.app CO2Runner-aarch64-apple-darwin.zip
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: CO2Runner-aarch64-apple-darwin
+          path: CO2Runner-aarch64-apple-darwin.zip
+          if-no-files-found: error
+
+  release:
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: [build-cli, build-desktop]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+          merge-multiple: true
+      - name: List artifacts
+        run: ls -lh artifacts
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: artifacts/*
+          generate_release_notes: true
+          fail_on_unmatched_files: true

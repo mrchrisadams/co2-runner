@@ -15,8 +15,12 @@ export class MockMouse {
 export class MockLocator {
   calls: RecordedCall[] = [];
   constructor(public selector: string, public page: MockPage) {}
-  async click(): Promise<void> { this.calls.push({ method: "click", args: [] }); }
-  async fill(value: string): Promise<void> { this.calls.push({ method: "fill", args: [value] }); }
+  async click(): Promise<void> {
+    this.calls.push({ method: "click", args: [] });
+  }
+  async fill(value: string): Promise<void> {
+    this.calls.push({ method: "fill", args: [value] });
+  }
   async waitFor(opts: unknown): Promise<void> {
     this.calls.push({ method: "waitFor", args: [opts] });
   }
@@ -36,7 +40,9 @@ export class MockPage {
     }
     return loc;
   }
-  async goto(url: string): Promise<void> { this.calls.push({ method: "goto", args: [url] }); }
+  async goto(url: string): Promise<void> {
+    this.calls.push({ method: "goto", args: [url] });
+  }
   async waitForLoadState(state: string): Promise<void> {
     this.calls.push({ method: "waitForLoadState", args: [state] });
   }
@@ -47,5 +53,7 @@ export class MockPage {
   async evaluate(expr: string): Promise<void> {
     this.calls.push({ method: "evaluate", args: [expr] });
   }
-  totalWaitMs(): number { return this.waitTimeoutMs; }
+  totalWaitMs(): number {
+    return this.waitTimeoutMs;
+  }
 }

@@ -4,11 +4,15 @@ history.db
 history.db-journal
 .Deno.localStorage
 .deno/
+.deno_compile_node_modules/
 node_modules/
 *.log
 main
 main-*
 co2-runner
 co2-runner-*
+co2-runner-*.exe
 screenshots/
 .playwright-cli/
+dist/
+.DS_Store

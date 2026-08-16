@@ -4,10 +4,50 @@ import { installBrowsers } from "./runner/install.ts";
 import { runJourney } from "./runner/run.ts";
 import { ResultsStore, type StoreEvent } from "./ui/results.ts";
 import { renderDashboard } from "./ui/components.ts";
-import { History, defaultDbPath } from "./ui/history.ts";
+import { History } from "./ui/history.ts";
+import { defaultDbPath } from "./ui/paths.ts";
 
 const args = Deno.args;
 const isServeMode = args[0] === "serve";
+// `deno desktop` sets DENO_SERVE_ADDRESS and passes no args; in that case we
+// skip CLI subcommand parsing entirely and go straight to the HTTP server.
+const isDesktopMode = !!Deno.env.get("DENO_SERVE_ADDRESS");
+
+const USAGE = `co2-runner — measure real browser energy per user journey
+
+USAGE:
+  co2-runner install                    Download Playwright's bundled Firefox
+  co2-runner run <journey.yaml>         Run a journey, emit energy figures
+  co2-runner serve                     Start the HTTP / desktop UI
+  co2-runner --help                     Show this message
+
+ENV:
+  PORT                  HTTP port for serve mode (default 8000)
+  CO2_RUNNER_DB         SQLite history DB path (default ~/.co2-runner/history.db)
+  DENO_SERVE_ADDRESS    Set by \`deno desktop\`; when present, run suppresses stdout
+
+EXAMPLES:
+  co2-runner install
+  co2-runner run journeys/example.yaml
+  co2-runner serve
+`;
+
+if (!isDesktopMode) {
+  if (args[0] === "--help" || args[0] === "-h" || args[0] === "help") {
+    console.log(USAGE);
+    Deno.exit(0);
+  }
+
+  if (args[0] === undefined) {
+    console.error(USAGE);
+    Deno.exit(1);
+  }
+
+  if (args[0] !== "install" && args[0] !== "run" && args[0] !== "serve") {
+    console.error(`unknown subcommand: ${args[0]}\n\n${USAGE}`);
+    Deno.exit(1);
+  }
+}
 
 // ── CLI subcommands (install / run) ────────────────────────────────────────
 if (args[0] === "install") {
@@ -36,7 +76,9 @@ if (args[0] === "run") {
   // Pure CLI: print and exit
   if (!isServeMode && !Deno.env.get("DENO_SERVE_ADDRESS")) {
     console.log(`\n=== Energy Report: ${result.name} ===`);
-    console.log(`${result.mWh.toFixed(4)} mWh  (${result.joules.toFixed(4)} J)`);
+    console.log(
+      `${result.mWh.toFixed(4)} mWh  (${result.joules.toFixed(4)} J)`,
+    );
     Deno.exit(0);
   }
 }
@@ -70,7 +112,9 @@ Deno.serve({ port }, async (req: Request) => {
 
     // push existing results immediately
     for (const r of store.results) {
-      await writer.write(encoder.encode(sseEncode({ type: "result", result: r })));
+      await writer.write(
+        encoder.encode(sseEncode({ type: "result", result: r })),
+      );
     }
 
     const unsubscribe = store.subscribe((event) => {

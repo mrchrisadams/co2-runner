@@ -37,7 +37,7 @@ export function renderDashboard(): string {
     .result-name { font-weight: 600; margin-bottom: 0.5rem; }
     .result-metrics { display: flex; gap: 2rem; }
     .metric-value { font-size: 1.8rem; font-weight: 700; color: var(--accent); }
-    .metric-label { font-size: 0.75rem; color: var(--muted); text-transform: uppercase; }
+    .metric-label { font-size: 0.75rem; color: var(--muted); }
     .result-time { font-size: 0.75rem; color: var(--muted); margin-top: 0.5rem; }
     #status { color: var(--muted); font-size: 0.85rem; min-height: 1.5rem; }
     .history-toggle { color: var(--accent); cursor: pointer; text-decoration: underline; font-size: 0.85rem; }

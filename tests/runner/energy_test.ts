@@ -1,7 +1,15 @@
-import { assertEquals, assertAlmostEquals, assertRejects } from "jsr:@std/assert";
+import {
+  assertAlmostEquals,
+  assertEquals,
+  assertRejects,
+} from "jsr:@std/assert";
 import { gzipSync } from "node:zlib";
 import { parseEnergyProfile } from "../../runner/energy.ts";
-import { buildProfile, PWH_TO_MWH, PWH_TO_JOULES } from "../fixtures/profiler.ts";
+import {
+  buildProfile,
+  PWH_TO_JOULES,
+  PWH_TO_MWH,
+} from "../fixtures/profiler.ts";
 
 async function writeProfile(path: string, profile: unknown): Promise<string> {
   await Deno.writeTextFile(path, JSON.stringify(profile));

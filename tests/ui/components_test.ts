@@ -10,7 +10,7 @@ Deno.test("renderDashboard produces a complete HTML document", () => {
 
 Deno.test("renderDashboard wires up the SSE endpoint and run form", () => {
   const html = renderDashboard();
-  assertStringIncludes(html, "EventSource(\"/events\")");
+  assertStringIncludes(html, 'EventSource("/events")');
   assertStringIncludes(html, 'fetch("/run"');
   assertStringIncludes(html, 'fetch("/history');
   assertStringIncludes(html, 'id="journey-input"');

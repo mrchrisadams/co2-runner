@@ -20,6 +20,15 @@ export class History {
 
   constructor(dbPath: string) {
     this.dbPath = dbPath;
+    // Ensure parent directory exists (SQLite will not create it).
+    const dir = dbPath.substring(0, dbPath.lastIndexOf("/"));
+    if (dir) {
+      try {
+        Deno.mkdirSync(dir, { recursive: true });
+      } catch {
+        // Directory may already exist or the path may be relative; ignore.
+      }
+    }
     this.db = new DatabaseSync(dbPath);
     this.db.exec(`
       CREATE TABLE IF NOT EXISTS runs (
@@ -58,11 +67,4 @@ export class History {
   close(): void {
     this.db.close();
   }
-}
-
-export function defaultDbPath(): string {
-  const env = Deno.env.get("CO2_RUNNER_DB");
-  if (env) return env;
-  const home = Deno.env.get("HOME") ?? Deno.env.get("USERPROFILE") ?? ".";
-  return `${home}/.co2-runner/history.db`;
 }

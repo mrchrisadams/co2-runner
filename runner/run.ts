@@ -4,6 +4,7 @@
 import { firefox } from "playwright";
 import { parse as parseYaml } from "yaml";
 import { parseEnergyProfile } from "./energy.ts";
+import { artefactsDir } from "../ui/paths.ts";
 import type { ResultsStore } from "../ui/results.ts";
 import type { JourneyConfig, JourneyResult, Step } from "../types.ts";
 
@@ -28,10 +29,11 @@ export async function runJourney(
     );
   }
 
-  await Deno.mkdir("journey-artefacts", { recursive: true });
+  const ARTEFACTS_DIR = artefactsDir();
+  await Deno.mkdir(ARTEFACTS_DIR, { recursive: true });
   const slug = slugify(config.name);
-  const PROFILE_PATH = `journey-artefacts/${slug}-profile.json`;
-  const HAR_PATH = `journey-artefacts/${slug}.har`;
+  const PROFILE_PATH = `${ARTEFACTS_DIR}/${slug}-profile.json`;
+  const HAR_PATH = `${ARTEFACTS_DIR}/${slug}.har`;
 
   const browser = await firefox.launch({
     headless: config.headless ?? false,

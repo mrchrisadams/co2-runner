@@ -21,5 +21,7 @@ export async function installBrowsers(): Promise<void> {
     console.error("Firefox install failed");
     Deno.exit(1);
   }
-  console.log("✅ Firefox installed. Run: co2-runner run journeys/example.yaml");
+  console.log(
+    "✅ Firefox installed. Run: co2-runner run journeys/example.yaml",
+  );
 }
