@@ -1,0 +1,26 @@
+name: "Branch Magazine reader journey"
+url: "https://branch.climateaction.tech/"
+browser: firefox
+headless: false
+steps:
+  - action: goto
+    url: "https://branch.climateaction.tech/"
+    waitFor: networkidle
+
+  - action: scroll
+    distance: 600
+    human: true
+
+  - action: wait
+    ms: 3000
+
+  - action: click
+    selector: "role=link[name='Go to issue']"
+    waitFor: domcontentloaded
+
+  - action: scroll
+    distance: 800
+    human: true
+
+  - action: wait
+    ms: 4000

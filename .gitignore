@@ -1,1 +1,13 @@
-cruft
+journey-artefacts/
+~/.co2-runner/
+history.db
+history.db-journal
+.Deno.localStorage
+.deno/
+node_modules/
+*.log
+main
+main-*
+co2-runner
+co2-runner-*
+screenshots/

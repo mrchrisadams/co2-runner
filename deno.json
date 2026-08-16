@@ -1,0 +1,32 @@
+{
+  "name": "co2-runner",
+  "version": "0.1.0",
+  "exports": "./main.ts",
+  "imports": {
+    "playwright": "npm:playwright@^1.45",
+    "yaml": "npm:yaml@^2.4",
+    "zlib": "node:zlib",
+    "fs": "node:fs/promises",
+    "path": "node:path",
+    "sqlite": "node:sqlite"
+  },
+  "tasks": {
+    "dev": "deno run -A --watch main.ts serve",
+    "serve": "deno run -A main.ts serve",
+    "install": "deno run -A main.ts install",
+    "run": "deno run -A main.ts run journeys/example.yaml",
+    "test": "deno test --allow-read --allow-write --allow-env --allow-run --allow-net",
+    "check": "deno check .",
+    "lint": "deno lint"
+  },
+  "desktop": {
+    "window": {
+      "title": "CO2 Runner",
+      "width": 1024,
+      "height": 700
+    }
+  },
+  "npmLifecycleScripts": {
+    "playwright": true
+  }
+}
