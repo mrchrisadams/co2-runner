@@ -354,6 +354,71 @@ Tests:
   `POST /codegen` 400 paths (missing body / missing startUrl), `POST /codegen`
   200-or-409 gate behaviour.
 
+### Phase 11 — Bundle Deno CLI into desktop app (`scripts/bundle-deno.ts`)
+
+The desktop app's codegen / install / `.spec.js`-runner features spawn `deno` as
+a subprocess (via `Deno.Command`). When launched via Finder, macOS gives the app
+a minimal PATH (`/usr/bin:/bin:/usr/sbin:/sbin`) that doesn't include
+`~/.deno/bin`. The spawn fails with `Failed to spawn 'deno': entity not found`.
+
+The fundamental conflict: the desktop binary embeds the Deno _runtime_ as a
+dylib/blob, but not the Deno _CLI_ — they're different artifacts. Codegen +
+install need the CLI (because they shell out to `npm:playwright` /
+`npm:@playwright/test` which Deno's CLI loads, not the in-process runtime).
+
+Fix: embed a real standalone `deno` CLI binary inside the .app bundle at build
+time. End-users download a self-contained DMG and never need to run
+`curl ... | sh` themselves.
+
+- [x] `scripts/bundle-deno.ts` — build-time script invoked by
+      `deno task desktop` after `deno desktop` produces the bare .app. Downloads
+      `https://dl.deno.land/release/v<version>/deno-<triple>.zip`, unzips into
+      `dist/CO2Runner.app/Contents/Resources/deno/deno`, `chmod 0755`. Platform
+      detected from `Deno.build.{os,arch}`; errors clearly on
+      non-macOS/non-Linux/non-Windows triples. Defaults to the running Deno
+      version (`Deno.version.deno`) if no explicit version is passed.
+- [x] Re-codesign the bundle ad-hoc with `--deep` after embedding, because
+      `deno desktop`'s original signature was computed before the bundled binary
+      was added. Without re-sign, macOS would refuse to launch the parent
+      process (or show a "damaged" warning).
+- [x] Regenerate the `.dmg` after bundling. `deno desktop` creates the initial
+      DMG with pre-bundle contents; without regeneration, the shipped DMG would
+      still have the bug. Uses `hdiutil create` with a staging directory
+      containing the .app + `/Applications` symlink for drag-to-install.
+- [x] `util/deno-bin.ts` `findDenoBinary()` updated: checks the bundled path
+      first (`<execPath>/../Resources/deno/deno` — derived from
+      `Deno.execPath()` which returns
+      `.../CO2Runner.app/Contents/MacOS/laufey_webview`). Falls back to
+      `$DENO_BIN`, `~/.deno/bin/deno`, Homebrew, distro paths, then bare `deno`
+      (PATH lookup).
+- [x] `DenoNotFoundError` message updated to point at the bundled-binary
+      fallback as option 1, then `curl ... | sh`, then `DENO_BIN` override.
+- [x] `.gitignore` excludes `bundled-deno/` (just defensive — the actual bundled
+      binary lives inside `dist/` which is already ignored).
+- [x] Tests: `tests/util/deno-bin_test.ts` +2 tests covering bundled-path-first
+      priority and `bundledDenoPath()` returning null in dev mode.
+
+**Verified end-to-end (Finder-launched desktop app, the user's failure
+scenario):**
+
+```
+$ open dist/CO2Runner.app
+$ curl http://127.0.0.1:<port>/codegen-status
+{"canCodegen":true,...}
+
+$ curl -X POST /codegen -d '{"startUrl":"https://example.com"}'
+{"started":true,"outputPath":"...example.com.spec.js"}
+
+$ ps
+62208 .../CO2Runner.app/Contents/Resources/deno/deno   ← bundled binary
+62212 .../firefox-1538/firefox/Nightly.app/.../firefox ← Playwright's Firefox
+```
+
+Previously: `Failed to spawn 'deno': entity not found` immediately.
+
+**Size cost:** DMG grows from 36 MB to 75 MB (~77 MB of bundled deno CLI).
+Trade-off is one-time download cost vs zero-setup for non-technical end-users.
+
 ## Known caveats to track
 
 1. **`deno desktop` requires Deno >= 2.9.0.** Now satisfied (running 2.9.5).

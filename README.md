@@ -189,7 +189,17 @@ jj git push -b v0.1.0
 ## Caveats
 
 - **Firefox is not bundled in the compiled binary** (~120-200 MB). Run
-  `co2-runner install` once per machine.
+  `co2-runner install` once per machine (or click the **Install Firefox** button
+  in the desktop app — it works without any external Deno install thanks to the
+  bundled Deno CLI, see below).
+- **The Deno CLI is bundled into `dist/CO2Runner.dmg`** (~77 MB of the ~75 MB
+  DMG). The codegen / install / `.spec.js`-runner features spawn `deno` as a
+  subprocess; without the bundle, the desktop app launched via Finder (PATH just
+  `/usr/bin:/bin`) crashes with `Failed to spawn 'deno': entity not found`. The
+  build script (`scripts/bundle-deno.ts`) downloads the standalone Deno binary
+  into `CO2Runner.app/Contents/Resources/deno/deno` at build time, and
+  `findDenoBinary()` in `util/deno-bin.ts` checks that location first. Falls
+  back to `DENO_BIN` env, `~/.deno/bin/deno`, Homebrew paths, then PATH lookup.
 - **`--unsafe-proto` is required by Playwright.** Deno 2.9 disables
   `Object.prototype.__proto__` assignment by default, but Playwright's internal
   object model leans on it; without the flag, the browser launches but freezes

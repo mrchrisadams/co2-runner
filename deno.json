@@ -21,7 +21,7 @@
     "lint": "deno lint",
     "compile": "deno compile -A --unsafe-proto --include npm:playwright --output co2-runner main.ts",
     "compile:all": "deno compile -A --unsafe-proto --include npm:playwright --target x86_64-apple-darwin --output co2-runner-x86_64-apple-darwin main.ts && deno compile -A --unsafe-proto --include npm:playwright --target aarch64-apple-darwin --output co2-runner-aarch64-apple-darwin main.ts && deno compile -A --unsafe-proto --include npm:playwright --target x86_64-unknown-linux-gnu --output co2-runner-x86_64-unknown-linux-gnu main.ts && deno compile -A --unsafe-proto --include npm:playwright --target x86_64-pc-windows-msvc --output co2-runner-x86_64-pc-windows-msvc.exe main.ts",
-    "desktop": "deno desktop -A --unsafe-proto --backend webview main.ts",
+    "desktop": "deno desktop -A --unsafe-proto --backend webview main.ts && deno run --allow-net --allow-write --allow-read --allow-run scripts/bundle-deno.ts",
     "desktop:dev": "deno desktop -A --unsafe-proto --hmr --backend webview main.ts",
     "desktop:all": "deno desktop -A --unsafe-proto --backend webview --all-targets main.ts"
   },
