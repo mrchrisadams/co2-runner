@@ -1,7 +1,11 @@
 // main.ts — CLI subcommand router + HTTP server.
 
 import { isAbsolute, relative, resolve } from "path";
-import { installBrowsers } from "./runner/install.ts";
+import {
+  installBrowsers,
+  installBrowsersWithProgress,
+  isFirefoxInstalled,
+} from "./runner/install.ts";
 import { runJourney } from "./runner/run.ts";
 import { ResultsStore, type StoreEvent } from "./ui/results.ts";
 import { renderDashboard } from "./ui/components.ts";
@@ -88,6 +92,10 @@ if (args[0] === "run") {
 const store = new ResultsStore();
 const history = new History(defaultDbPath());
 
+// On startup, check whether Firefox is already installed and broadcast the
+// status to subscribers (UI uses this to enable/disable the Run button).
+isFirefoxInstalled().then((installed) => store.setFirefoxInstalled(installed));
+
 function sseEncode(event: StoreEvent): string {
   return `data: ${JSON.stringify(event)}\n\n`;
 }
@@ -112,13 +120,6 @@ const hostname = "127.0.0.1";
 Deno.serve({ port, hostname }, async (req: Request) => {
   const url = new URL(req.url);
 
-  if (url.pathname === "/dashboard.js" && req.method === "GET") {
-    const content = await Deno.readTextFile("./ui/dashboard.js");
-    return new Response(content, {
-      headers: { "content-type": "application/javascript; charset=utf-8" },
-    });
-  }
-
   if (url.pathname === "/" && req.method === "GET") {
     return new Response(renderDashboard(), {
       headers: { "content-type": "text/html; charset=utf-8" },
@@ -129,14 +130,56 @@ Deno.serve({ port, hostname }, async (req: Request) => {
     return new Response(null, { status: 204 });
   }
 
+  if (url.pathname === "/firefox-status" && req.method === "GET") {
+    return new Response(
+      JSON.stringify({ installed: store.firefoxInstalled }),
+      { headers: { "content-type": "application/json" } },
+    );
+  }
+
+  if (url.pathname === "/install" && req.method === "POST") {
+    // Always trigger — Playwright's installer is idempotent (it skips
+    // downloads of already-present browsers). We don't gate on
+    // store.firefoxInstalled here because the user might have a stale
+    // "missing" status we want to override, and re-running install is
+    // cheap when Firefox is already present.
+    installBrowsersWithProgress((p) => store.installProgress(p))
+      .then(() => store.setFirefoxInstalled(true))
+      .catch((err) => {
+        console.error(`install failed: ${err.message}`);
+        store.installProgress({
+          phase: "error",
+          message: err.message,
+        });
+      });
+    return new Response(
+      JSON.stringify({ started: true }),
+      { headers: { "content-type": "application/json" } },
+    );
+  }
+
   if (url.pathname === "/events" && req.method === "GET") {
     const { readable, writable } = new TransformStream();
     const writer = writable.getWriter();
     const encoder = new TextEncoder();
 
-    // push existing results immediately
+    // IMPORTANT: do NOT await writer.write() before returning Response.
+    // TransformStream's writer.write() doesn't resolve until the readable
+    // side is being drained, and Deno.serve only flushes Response headers
+    // to the client once the handler returns. Awaiting here would deadlock
+    // — the client never sees headers, never starts reading, the writes
+    // never complete. Push the initial events onto the queue (sync), then
+    // return; client draining happens after the response is returned.
+    writer.write(
+      encoder.encode(
+        sseEncode({
+          type: "firefox-status",
+          installed: store.firefoxInstalled,
+        }),
+      ),
+    );
     for (const r of store.results) {
-      await writer.write(
+      writer.write(
         encoder.encode(sseEncode({ type: "result", result: r })),
       );
     }
@@ -175,7 +218,7 @@ Deno.serve({ port, hostname }, async (req: Request) => {
   }
 
   if (url.pathname === "/run" && req.method === "POST") {
-    let body: { journey?: string };
+    let body: { journey?: string; journeyYaml?: string; journeyName?: string };
     try {
       body = await req.json();
     } catch {
@@ -184,44 +227,82 @@ Deno.serve({ port, hostname }, async (req: Request) => {
         headers: { "content-type": "application/json" },
       });
     }
-    const journey = body.journey;
-    if (!journey) {
-      return new Response(JSON.stringify({ error: "journey required" }), {
-        status: 400,
-        headers: { "content-type": "application/json" },
-      });
-    }
-    const safePath = safeJourneyPath(journey);
-    if (!safePath) {
+
+    // Gate: a journey cannot run without Firefox installed. Surfacing this
+    // here means the UI's Run button is disabled and clicking it returns
+    // a meaningful error rather than a downstream Playwright launch failure.
+    if (!store.firefoxInstalled) {
       return new Response(
         JSON.stringify({
           error:
-            "journey path must resolve inside the journeys/ directory (path traversal blocked)",
+            "Firefox is not installed. Click 'Install Firefox' first — it's a one-time ~150MB download.",
         }),
-        {
-          status: 400,
-          headers: { "content-type": "application/json" },
-        },
+        { status: 409, headers: { "content-type": "application/json" } },
       );
     }
-    runJourney(safePath, store)
+
+    let journeyPath: string;
+    let displayName: string;
+
+    if (body.journeyYaml !== undefined) {
+      // File-picker path: client uploaded the YAML contents. We never see a
+      // path, so write to a temp file the runner can read.
+      const tmp = await Deno.makeTempFile({
+        prefix: "co2-runner-journey-",
+        suffix: ".yaml",
+      });
+      await Deno.writeTextFile(tmp, body.journeyYaml);
+      journeyPath = tmp;
+      displayName = body.journeyName ?? "uploaded journey";
+    } else if (body.journey !== undefined) {
+      // Legacy path-based mode (CLI, backward-compat).
+      const safePath = safeJourneyPath(body.journey);
+      if (!safePath) {
+        return new Response(
+          JSON.stringify({
+            error:
+              "journey path must resolve inside the journeys/ directory (path traversal blocked)",
+          }),
+          { status: 400, headers: { "content-type": "application/json" } },
+        );
+      }
+      journeyPath = safePath;
+      displayName = body.journey;
+    } else {
+      return new Response(
+        JSON.stringify({
+          error:
+            "either 'journeyYaml' (string contents) or 'journey' (path) is required",
+        }),
+        { status: 400, headers: { "content-type": "application/json" } },
+      );
+    }
+
+    runJourney(journeyPath, store)
       .then((result) => {
         try {
           history.insert(result);
         } catch (err) {
           console.warn(`history write failed: ${(err as Error).message}`);
         }
+        // If we wrote a temp file for uploaded YAML, clean it up.
+        if (body.journeyYaml !== undefined) {
+          Deno.remove(journeyPath).catch(() => {});
+        }
       })
       .catch((err) => {
         console.error(`journey failed: ${err.message}`);
         store.progress({
-          name: journey,
+          name: displayName,
           stepIndex: -1,
           totalSteps: 0,
           action: "error",
           status: "error",
           message: err.message,
         });
+        if (body.journeyYaml !== undefined) {
+          Deno.remove(journeyPath).catch(() => {});
+        }
       });
     return new Response(JSON.stringify({ started: true }), {
       headers: { "content-type": "application/json" },

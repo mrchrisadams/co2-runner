@@ -88,25 +88,35 @@ Deno.test("GET /unknown returns 404", () =>
     assertEquals(res.status, 404);
   }));
 
-Deno.test("GET /events opens an SSE stream", () =>
+Deno.test("GET /events opens an SSE stream and sends firefox-status on connect", () =>
   withServer(async () => {
     const ctrl = new AbortController();
     const res = await fetch(`${BASE}/events`, { signal: ctrl.signal });
     assertEquals(res.status, 200);
     assertEquals(res.headers.get("content-type"), "text/event-stream");
 
+    // The server pushes a firefox-status event to every new subscriber
+    // immediately (so the UI knows whether to enable the Run button on
+    // first paint). Read the first chunk and check it contains that event.
     const reader = res.body!.getReader();
-    const read = reader.read();
-    const timeout = new Promise<undefined>((r) =>
-      setTimeout(() => r(undefined), 500)
-    );
-    const result = await Promise.race([read, timeout]);
-    ctrl.abort();
+    const result = await Promise.race([
+      reader.read(),
+      new Promise<undefined>((r) => setTimeout(() => r(undefined), 2000)),
+    ]);
+    try {
+      ctrl.abort();
+    } catch {}
     try {
       await reader.cancel();
     } catch {}
 
-    assert(result === undefined || "value" in result);
+    assert(result, "expected at least one SSE chunk within 2s of connect");
+    const text = new TextDecoder().decode(result.value);
+    assert(
+      text.includes('"type":"firefox-status"') ||
+        text.includes('"type": "firefox-status"'),
+      `expected firefox-status in first SSE chunk, got: ${text}`,
+    );
   }));
 
 Deno.test("NOT modified by previous tests: history stays empty", () =>

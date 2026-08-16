@@ -1,16 +1,13 @@
 import { assertStringIncludes } from "jsr:@std/assert";
 import { renderDashboard } from "../../ui/components.ts";
 
-// The dashboard is split across two files: an HTML shell produced by
-// renderDashboard() and a sibling JavaScript module (ui/dashboard.js) serving
-// the behaviour. Tests that pin wiring (EventSource, fetch, metric labels)
-// must read both files and assert against the combined output.
-
-async function dashboardBundle(): Promise<string> {
-  const html = renderDashboard();
-  const js = await Deno.readTextFile("./ui/dashboard.js");
-  return `${html}\n${js}`;
-}
+// renderDashboard() reads dashboard.js at module-load time via Deno's
+// `import ... with { type: "file" }` syntax. This embeds the JS into
+// the compiled binary (Deno's compiler recognises the directive and
+// inlines the file's contents as a string). Critical: this only works
+// because the import is statically analyzable; reading the file at
+// request-time via `Deno.readTextFile` would fail in compiled binaries
+// (Deno's compiler embeds files as virtual modules, not on disk).
 
 Deno.test("renderDashboard produces a complete HTML document", () => {
   const html = renderDashboard();
@@ -19,19 +16,26 @@ Deno.test("renderDashboard produces a complete HTML document", () => {
   assertStringIncludes(html, "<title>CO2 Runner</title>");
 });
 
-Deno.test("dashboard wires up the SSE endpoint and run form", async () => {
-  const bundle = await dashboardBundle();
-  assertStringIncludes(bundle, 'EventSource("/events")');
-  assertStringIncludes(bundle, 'fetch("/run"');
-  assertStringIncludes(bundle, 'fetch("/history');
-  assertStringIncludes(bundle, 'id="journey-input"');
-  assertStringIncludes(bundle, 'id="run-btn"');
+Deno.test("renderDashboard inlines the dashboard JavaScript", () => {
+  // The dashboard JS is inlined into the HTML response (<script>...</script>
+  // rather than <script src=/dashboard.js>) so the page works in compiled
+  // CLI binaries and desktop bundles where Deno.cwd() is unreliable.
+  const html = renderDashboard();
+  assertStringIncludes(html, 'EventSource("/events")');
+  assertStringIncludes(html, 'fetch("/run"');
+  assertStringIncludes(html, 'fetch("/firefox-status"');
+  assertStringIncludes(html, 'fetch("/install"');
+  assertStringIncludes(html, 'fetch("/history');
+  assertStringIncludes(html, 'id="journey-input"');
+  assertStringIncludes(html, 'id="run-btn"');
+  // The JS body is inline (no external script src):
+  assertStringIncludes(html, "<script>\n");
 });
 
-Deno.test("dashboard renders both mWh and Joules metric slots", async () => {
-  const bundle = await dashboardBundle();
-  assertStringIncludes(bundle, "mWh");
-  assertStringIncludes(bundle, "Joules");
+Deno.test("renderDashboard renders both mWh and Joules metric slots", () => {
+  const html = renderDashboard();
+  assertStringIncludes(html, "mWh");
+  assertStringIncludes(html, "Joules");
 });
 
 Deno.test("renderDashboard displays app title", () => {

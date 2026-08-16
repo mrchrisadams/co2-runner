@@ -60,3 +60,8 @@ export interface JourneyProgress {
   status: "running" | "complete" | "error";
   message?: string;
 }
+
+export interface InstallProgress {
+  phase: "starting" | "downloading" | "complete" | "error";
+  message: string;
+}

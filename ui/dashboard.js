@@ -1,24 +1,156 @@
+// ui/dashboard.js — client-side logic for the CO2 Runner dashboard.
+// Subscribes to /events (SSE) for install-progress, firefox-status,
+// journey-progress, and result events. Uses the native file picker
+// (no path is ever visible to the page) and uploads YAML contents.
+
 const evtSource = new EventSource("/events");
+
+let firefoxInstalled = false;
+let installInProgress = false;
+let selectedFile = null; // File object from <input type=file>
+
 evtSource.onmessage = (e) => {
   const ev = JSON.parse(e.data);
-  if (ev.type === "result") addResultCard(ev.result);
-  else if (ev.type === "progress") {
-    setStatus(
-      `⏳ Step ${
-        ev.progress.stepIndex + 1
-      }/${ev.progress.totalSteps}: ${ev.progress.action}`,
-    );
+  if (ev.type === "result") {
+    addResultCard(ev.result);
+  } else if (ev.type === "progress") {
+    if (ev.progress.status === "error") {
+      setStatus("⚠️ " + (ev.progress.message ?? "journey failed"));
+    } else {
+      setStatus(
+        `⏳ Step ${
+          ev.progress.stepIndex + 1
+        }/${ev.progress.totalSteps}: ${ev.progress.action}`,
+      );
+    }
+  } else if (ev.type === "firefox-status") {
+    firefoxInstalled = ev.installed;
+    installInProgress = false;
+    renderFirefoxStatus();
+  } else if (ev.type === "install") {
+    renderInstallEvent(ev.install);
   }
 };
+
+// ── Firefox install status ─────────────────────────────────────────────
+
+function renderFirefoxStatus() {
+  const dot = document.getElementById("firefox-dot");
+  const label = document.getElementById("firefox-label");
+  const btn = document.getElementById("install-btn");
+
+  dot.classList.remove("installed", "missing", "installing");
+
+  if (installInProgress) {
+    dot.classList.add("installing");
+    label.textContent = "Installing Firefox… (~150MB download)";
+    btn.classList.add("hidden");
+    btn.disabled = true;
+  } else if (firefoxInstalled) {
+    dot.classList.add("installed");
+    label.textContent = "Firefox is installed — ready to run";
+    btn.classList.add("hidden");
+    btn.disabled = true;
+  } else {
+    dot.classList.add("missing");
+    label.textContent = "Firefox is NOT installed — required to run journeys";
+    btn.classList.remove("hidden");
+    btn.disabled = false;
+  }
+  updateRunButton();
+}
+
+function renderInstallEvent(p) {
+  if (p.phase === "starting") {
+    installInProgress = true;
+    renderFirefoxStatus();
+    setStatus("📥 " + p.message);
+  } else if (p.phase === "downloading") {
+    setStatus("📥 " + p.message);
+  } else if (p.phase === "complete") {
+    installInProgress = false;
+    setStatus("✅ " + p.message);
+    // Poll the server's status endpoint to refresh firefoxInstalled
+    fetch("/firefox-status").then((r) => r.json()).then((j) => {
+      firefoxInstalled = j.installed;
+      renderFirefoxStatus();
+    }).catch(() => {});
+  } else if (p.phase === "error") {
+    installInProgress = false;
+    renderFirefoxStatus();
+    setStatus("⚠️ " + p.message);
+  }
+}
+
+async function triggerInstall() {
+  const btn = document.getElementById("install-btn");
+  btn.disabled = true;
+  try {
+    await fetch("/install", { method: "POST" });
+  } catch (err) {
+    setStatus("⚠️ install request failed: " + err.message);
+    btn.disabled = false;
+  }
+}
+
+// ── File picker ─────────────────────────────────────────────────────────
+
+function onFilePicked(e) {
+  const file = e.target.files[0];
+  selectedFile = file ?? null;
+  const labelEl = document.getElementById("file-label-text");
+  const fileLabel = document.querySelector(".file-label");
+  if (file) {
+    labelEl.textContent = "📄 " + file.name;
+    fileLabel.classList.add("has-file");
+  } else {
+    labelEl.textContent = "📄 Choose a journey YAML file…";
+    fileLabel.classList.remove("has-file");
+  }
+  updateRunButton();
+}
+
+function updateRunButton() {
+  const btn = document.getElementById("run-btn");
+  btn.disabled = !firefoxInstalled || !selectedFile || installInProgress;
+}
+
+// ── Run journey ──────────────────────────────────────────────────────────
+
+async function startRun() {
+  if (!selectedFile) return;
+  const btn = document.getElementById("run-btn");
+  btn.disabled = true;
+  setStatus("⏳ Uploading journey…");
+  try {
+    const yaml = await selectedFile.text();
+    const res = await fetch("/run", {
+      method: "POST",
+      body: JSON.stringify({
+        journeyYaml: yaml,
+        journeyName: selectedFile.name,
+      }),
+      headers: { "content-type": "application/json" },
+    });
+    if (res.ok) {
+      setStatus("🚀 Journey started — results will appear below");
+    } else {
+      const j = await res.json().catch(() => ({ error: "request failed" }));
+      setStatus("⚠️ " + j.error);
+    }
+  } catch (err) {
+    setStatus("⚠️ " + err.message);
+  } finally {
+    updateRunButton();
+  }
+}
+
+// ── Result card rendering ────────────────────────────────────────────────
 
 function addResultCard(r) {
   const card = document.createElement("div");
   card.className = "result-card";
-
-  // We can't use the template literal as defined above directly because it uses 'r'.
-  // Let's make it a function instead for better clarity and to avoid scoping issues.
   card.innerHTML = renderResultCard(r);
-
   document.getElementById("results").prepend(card);
   setStatus("");
 }
@@ -44,23 +176,7 @@ function setStatus(msg) {
   document.getElementById("status").textContent = msg;
 }
 
-async function startRun() {
-  const journey = document.getElementById("journey-input").value.trim();
-  if (!journey) return;
-  const btn = document.getElementById("run-btn");
-  btn.disabled = true;
-  setStatus("⏳ Running journey...");
-  try {
-    const res = await fetch("/run", {
-      method: "POST",
-      body: JSON.stringify({ journey }),
-      headers: { "content-type": "application/json" },
-    });
-    if (res.ok) setStatus("🚀 Journey started — results will appear below");
-  } finally {
-    btn.disabled = false;
-  }
-}
+// ── History ──────────────────────────────────────────────────────────────
 
 async function loadHistory() {
   const res = await fetch("/history?limit=20");
@@ -68,8 +184,25 @@ async function loadHistory() {
   runs.reverse().forEach(addResultCard);
 }
 
+// ── Wire up event listeners ──────────────────────────────────────────────
+
+document.getElementById("install-btn").addEventListener(
+  "click",
+  triggerInstall,
+);
+document.getElementById("journey-input").addEventListener(
+  "change",
+  onFilePicked,
+);
 document.getElementById("run-btn").addEventListener("click", startRun);
 document.querySelector(".history-toggle").addEventListener(
   "click",
   loadHistory,
 );
+
+// If we loaded before the first firefox-status broadcast arrived,
+// do a one-shot fetch so the UI is correct on first paint.
+fetch("/firefox-status").then((r) => r.json()).then((j) => {
+  firefoxInstalled = j.installed;
+  renderFirefoxStatus();
+}).catch(() => {});

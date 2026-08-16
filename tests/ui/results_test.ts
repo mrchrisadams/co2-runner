@@ -59,3 +59,30 @@ Deno.test("ResultsStore unsubscribe stops delivery", () => {
   s.push(sample(1)); // ignored
   assertEquals(count, 1);
 });
+
+Deno.test("ResultsStore installProgress emits install events", () => {
+  const s = new ResultsStore();
+  const seen: string[] = [];
+  s.subscribe((ev) => {
+    if (ev.type === "install") seen.push(ev.install.phase);
+  });
+  s.installProgress({ phase: "starting", message: "hi" });
+  s.installProgress({ phase: "downloading", message: "50%" });
+  s.installProgress({ phase: "complete", message: "done" });
+  assertEquals(seen, ["starting", "downloading", "complete"]);
+});
+
+Deno.test("ResultsStore setFirefoxInstalled updates state + broadcasts", () => {
+  const s = new ResultsStore();
+  assertEquals(s.firefoxInstalled, false);
+  const seen: boolean[] = [];
+  s.subscribe((ev) => {
+    if (ev.type === "firefox-status") seen.push(ev.installed);
+  });
+  s.setFirefoxInstalled(true);
+  assertEquals(s.firefoxInstalled, true);
+  assertEquals(seen, [true]);
+  s.setFirefoxInstalled(false);
+  assertEquals(s.firefoxInstalled, false);
+  assertEquals(seen, [true, false]);
+});
