@@ -95,7 +95,15 @@ const port = parseInt(Deno.env.get("PORT") ?? "8000", 10);
 Deno.serve({ port }, async (req: Request) => {
   const url = new URL(req.url);
 
+  if (url.pathname === "/dashboard.js" && req.method === "GET") {
+    const content = await Deno.readTextFile("./ui/dashboard.js");
+    return new Response(content, {
+      headers: { "content-type": "application/javascript; charset=utf-8" },
+    });
+  }
+
   if (url.pathname === "/" && req.method === "GET") {
+
     return new Response(renderDashboard(), {
       headers: { "content-type": "text/html; charset=utf-8" },
     });

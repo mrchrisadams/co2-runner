@@ -16,3 +16,4 @@ screenshots/
 .playwright-cli/
 dist/
 .DS_Store
+code-review-1.md
