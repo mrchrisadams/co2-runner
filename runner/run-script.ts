@@ -53,7 +53,11 @@ export async function countTests(
   const denoBin = await findDenoBinary();
   if (!denoBin) throw new DenoNotFoundError();
 
+  // cwd = artefacts dir (the parent of the generated playwright.config.ts).
+  // Not strictly necessary for `--list` (which doesn't run tests), but
+  // keeps the spawn contract uniform with the actual test-run spawn below.
   const cmd = new Deno.Command(denoBin, {
+    cwd: artefactsDir(),
     args: [
       "run",
       "-A",
@@ -218,7 +222,14 @@ export async function runScript(
     const denoBin = await findDenoBinary();
     if (!denoBin) throw new DenoNotFoundError();
 
+    // Run the subprocess with cwd = ARTEFACTS_DIR. Without this, the
+    // subprocess inherits the parent's cwd, which when the desktop app
+    // is launched via Finder is `/` (read-only on modern macOS).
+    // @playwright/test tries to mkdir `test-results/` in its cwd and
+    // crashes with `EROFS: read-only file system, mkdir '/test-results/...'`.
+    // The artefacts dir is one we own + create, so it's always writable.
     const cmd = new Deno.Command(denoBin, {
+      cwd: ARTEFACTS_DIR,
       args: [
         "run",
         "-A",
@@ -238,15 +249,48 @@ export async function runScript(
         MOZ_PROFILER_STARTUP_THREADS: "GeckoMain,Compositor,Renderer",
         MOZ_PROFILER_SHUTDOWN: PROFILE_PATH,
       },
-      stdout: "inherit",
-      stderr: "inherit",
+      stdout: "piped",
+      stderr: "piped",
     });
     const child = cmd.spawn();
+
+    // Forward stdout (test runner output) to the server console AND capture
+    // it so we can include it in the SSE error event if the journey fails.
+    const dec = new TextDecoder();
+    let stdoutBuf = "";
+    let stderrBuf = "";
+    const readStream = async (
+      stream: ReadableStream<Uint8Array>,
+      sink: (s: string) => void,
+    ) => {
+      const reader = stream.getReader();
+      while (true) {
+        const { value, done } = await reader.read();
+        if (done) break;
+        const text = dec.decode(value, { stream: true });
+        sink(text);
+      }
+    };
+    await Promise.all([
+      readStream(child.stdout, (s) => {
+        stdoutBuf += s;
+        console.log(s.trimEnd());
+      }),
+      readStream(child.stderr, (s) => {
+        stderrBuf += s;
+        console.error(s.trimEnd());
+      }),
+    ]);
+
     const status = await child.status;
 
     if (!status.success) {
+      // Include the actual playwright error output so the UI sees something
+      // actionable, not just "exit code 1 — see server stderr" (the server
+      // stderr isn't visible to the user in the desktop app).
+      const failureOutput = (stderrBuf || stdoutBuf).trim().slice(-800);
       throw new Error(
-        `journey script failed (exit code ${status.code}) — see server stderr for assertion failures / runtime errors`,
+        `journey script failed (exit code ${status.code}):\n${failureOutput}`,
       );
     }
 
