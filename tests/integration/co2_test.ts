@@ -41,7 +41,7 @@ async function withServer(run: () => Promise<void>): Promise<void> {
   }
 }
 
-Deno.test("GET /grid-intensities returns WORLD first + sample countries", () =>
+Deno.test("GET /grid-intensities returns Electricity Maps entries with zone IDs", () =>
   withServer(async () => {
     const res = await fetch(`${BASE}/grid-intensities`);
     assertEquals(res.status, 200);
@@ -52,12 +52,14 @@ Deno.test("GET /grid-intensities returns WORLD first + sample countries", () =>
       entries.length > 100,
       `expected ≥100 entries, got ${entries.length}`,
     );
-    assertEquals(entries[0].code, "WORLD");
+    // First entry should be country-level (no countryName).
+    assert(!entries[0].countryName, `first entry should be country-level`);
     assert(typeof entries[0].intensity === "number");
-    // Sample country codes present.
-    const codes = entries.map((e: { code: string }) => e.code);
-    assert(codes.includes("AVG-USA"), "missing AVG-USA");
-    assert(codes.includes("MAR-USA"), "missing MAR-USA");
+    // Sample zone IDs from Electricity Maps.
+    const ids = entries.map((e: { zoneId: string }) => e.zoneId);
+    assert(ids.includes("GB"), "missing GB");
+    assert(ids.includes("AU-NSW"), "missing AU-NSW");
+    assert(ids.includes("FR"), "missing FR");
   }));
 
 Deno.test("POST /open-home opens ~/.co2-runner on macOS (or returns a clear error)", () => {

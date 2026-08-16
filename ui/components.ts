@@ -124,12 +124,18 @@ export function renderDashboard(): string {
     .metric-label .grid-select {
       background: var(--bg); color: var(--muted); border: 1px solid var(--border);
       border-radius: 4px; padding: 0.1rem 0.3rem; font-size: 0.7rem;
-      margin-top: 0.25rem; max-width: 220px;
+      margin-top: 0.25rem; max-width: 320px;
     }
     .result-time { font-size: 0.75rem; color: var(--muted); margin-top: 0.5rem; }
     .action-row { margin: 0.5rem 0 0; display: flex; gap: 1rem; font-size: 0.85rem; }
     .action-link { color: var(--accent); cursor: pointer; text-decoration: underline; }
     .action-link:hover { color: #6ee7a3; }
+    .em-footer {
+      margin-top: 2rem; padding-top: 1rem; border-top: 1px solid var(--border);
+      color: var(--muted); font-size: 0.75rem; line-height: 1.5;
+    }
+    .em-footer a { color: var(--accent); text-decoration: none; }
+    .em-footer a:hover { text-decoration: underline; }
   </style>
 </head>
 <body>
@@ -179,6 +185,15 @@ export function renderDashboard(): string {
     <span class="action-link" id="open-home-link">📂 Open co2-runner home directory</span>
   </div>
   <div id="results"></div>
+
+  <footer class="em-footer">
+    Carbon intensity data from
+    <a href="https://www.electricitymaps.com/data/methodology" target="_blank" rel="noopener">Electricity Maps</a>.
+    Published under the
+    <a href="https://opendatacommons.org/licenses/odbl/summary/" target="_blank" rel="noopener">Open Database License (ODbL)</a>.
+    More, higher-resolution data available at
+    <a href="https://www.electricitymaps.com/data" target="_blank" rel="noopener">electricitymaps.com/data</a>.
+  </footer>
 
   <script>
 ${dashboardJs}

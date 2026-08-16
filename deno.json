@@ -5,7 +5,6 @@
   "imports": {
     "playwright": "npm:playwright@^1.45",
     "@playwright/test": "npm:@playwright/test@^1.45",
-    "@tgwf/co2": "npm:@tgwf/co2@^0.16",
     "yaml": "npm:yaml@^2.4",
     "zlib": "node:zlib",
     "fs": "node:fs/promises",

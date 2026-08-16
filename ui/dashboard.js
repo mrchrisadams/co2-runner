@@ -159,7 +159,7 @@ async function startRun() {
 // /grid-intensities (cached in the gridIntensities global) and cloned
 // into each card.
 
-let gridIntensities = []; // Array of { code, label, intensity, source }
+let gridIntensities = []; // Array of { zoneId, zoneName, countryName, intensity, carbonFree, label }
 
 async function ensureGridIntensitiesLoaded() {
   if (gridIntensities.length > 0) return;
@@ -192,14 +192,14 @@ function addResultCard(r) {
 }
 
 function renderResultCard(r) {
-  // Build the <option> list from gridIntensities. Falls back to a single
-  // WORLD-avg option if the data hasn't loaded yet (the populateGridOptions
-  // call below fills in the rest on async load).
+  // Build the <option> list from gridIntensities (Electricity Maps 2025).
+  // Each entry's label already includes the full formatted string:
+  // "Country, Zone - (ID) - intensity - carbonFree%"
   const options = gridIntensities.length > 0
     ? gridIntensities.map((e) =>
-      `<option value="${e.intensity}">${e.label} (${e.intensity} gCO₂/kWh)</option>`
+      `<option value="${e.intensity}">${e.label}</option>`
     ).join("")
-    : `<option value="472.94">World average (Ember) (472.94 gCO₂/kWh)</option>`;
+    : `<option value="">Loading grid data…</option>`;
 
   return `
     <div class="result-name">${r.name}</div>

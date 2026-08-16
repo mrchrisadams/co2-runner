@@ -5,8 +5,6 @@
     "jsr:@std/internal@^1.0.12": "1.0.12",
     "npm:@playwright/test@*": "1.62.1",
     "npm:@playwright/test@^1.45.0": "1.62.1",
-    "npm:@tgwf/co2@*": "0.16.9",
-    "npm:@tgwf/co2@0.16": "0.16.9",
     "npm:playwright@*": "1.62.1",
     "npm:playwright@^1.45.0": "1.62.1",
     "npm:yaml@^2.4.0": "2.8.3"
@@ -29,9 +27,6 @@
         "playwright"
       ],
       "bin": true
-    },
-    "@tgwf/co2@0.16.9": {
-      "integrity": "sha512-+nuT7HS5r22lbW4MdgSPHhirYBjHR6Q8sz5kX6dKdK+yIkRukLAGaH6L/toZwVEOuEeeIRfWYJuaJIoxEGDMXg=="
     },
     "fsevents@2.3.2": {
       "integrity": "sha512-xiqMQR4xAeHTuB9uWm+fFRcIOgKBMiOBP+eXiyT7jsgVCq1bkVygt00oASowB7EdtpOHaaPgKt812P9ab+DDKA==",
@@ -60,7 +55,6 @@
   "workspace": {
     "dependencies": [
       "npm:@playwright/test@^1.45.0",
-      "npm:@tgwf/co2@0.16",
       "npm:playwright@^1.45.0",
       "npm:yaml@^2.4.0"
     ]
