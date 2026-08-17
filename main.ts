@@ -236,12 +236,16 @@ Deno.serve({ port, hostname }, async (req: Request) => {
     // the "Record Journey" button. Returns whether Firefox is installed
     // AND whether the current env has a graphical display (Linux without
     // DISPLAY/WAYLAND_DISPLAY is headless and can't run codegen).
+    // Also returns the OS platform so the UI can hide features that
+    // aren't supported on this platform (e.g. film reel screenshots on
+    // macOS — see ADR-005).
     return new Response(
       JSON.stringify({
         canCodegen: store.firefoxInstalled && hasGraphicalDisplay(),
         firefoxInstalled: store.firefoxInstalled,
         hasGraphicalDisplay: hasGraphicalDisplay(),
         codegenInProgress: store.codegenInProgress,
+        platform: Deno.build.os,
       }),
       { headers: { "content-type": "application/json" } },
     );

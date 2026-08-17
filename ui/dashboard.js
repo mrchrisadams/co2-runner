@@ -357,6 +357,14 @@ async function refreshCodegenStatus() {
     canCodegen = j.canCodegen;
     codegenInProgress = j.codegenInProgress;
     updateRecordButton();
+    // Hide the film reel checkbox on macOS — CompositorScreenshot markers
+    // are not produced by Playwright's Firefox build on macOS because the
+    // CARenderer snapshot path fails silently. See ADR-005.
+    if (j.platform === "darwin") {
+      document.getElementById("filmreel-checkbox").parentElement.style.display =
+        "none";
+      document.getElementById("filmreel-warning").style.display = "none";
+    }
   } catch {
     // server not reachable; nothing to do
   }
