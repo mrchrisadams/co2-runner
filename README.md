@@ -210,12 +210,7 @@ jj git push -b v0.1.0
   `journeys/example.spec.js` target the current (Issue 9) layout of
   `branch.climateaction.tech`. If the site is revised, re-record with
   `npx playwright codegen` or update the YAML selector lines to match.
-- **Deno KV is avoided** (stuck in beta since Deno's May 2025 "Greatly
-  Exaggerated" post). History uses `node:sqlite` (`DatabaseSync`) which is built
-  into Deno 2.2+ with no extra deps.
 - **Desktop app screenshots on macOS**: to capture the running desktop app
   window with `screencapture`, grant the launching terminal (or whatever shell
   you build from) Screen Recording permission in System Settings → Privacy &
   Security → Screen Recording.
-
-See `plan.md` for the full implementation plan.
