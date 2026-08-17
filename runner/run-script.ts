@@ -117,8 +117,9 @@ function buildPlaywrightConfig(opts: {
   scriptPath: string; // absolute
   harPath: string; // absolute
   slowMo?: boolean;
+  filmReel?: boolean;
 }): string {
-  const { scriptPath, harPath, slowMo } = opts;
+  const { scriptPath, harPath, slowMo, filmReel } = opts;
   // testDir is the parent of the script; testMatch is the script basename.
   const scriptDir = scriptPath.substring(0, scriptPath.lastIndexOf("/"));
   const scriptName = scriptPath.substring(scriptPath.lastIndexOf("/") + 1);
@@ -139,6 +140,11 @@ export default defineConfig({
     // nothing happen until the energy figure appears).
     headless: false,
     ${slowMo ? "slowMo: 1500," : "// slowMo disabled"}
+    ${
+    filmReel
+      ? 'firefoxUserPrefs: { "gfx.webrender.all": false, "layers.acceleration.force-enabled": false, "gfx.webrender.enabled": false },'
+      : "// filmReel disabled"
+  }
     contextOptions: {
       recordHar: {
         path: ${JSON.stringify(harPath)},
@@ -165,7 +171,7 @@ export default defineConfig({
 export async function runScript(
   scriptPath: string,
   store?: ResultsStore,
-  opts?: { displayName?: string; slowMo?: boolean },
+  opts?: { displayName?: string; slowMo?: boolean; filmReel?: boolean },
 ): Promise<JourneyResult> {
   const ARTEFACTS_DIR = artefactsDir();
   await Deno.mkdir(ARTEFACTS_DIR, { recursive: true });
@@ -191,6 +197,7 @@ export async function runScript(
     scriptPath: absScriptPath,
     harPath: HAR_PATH,
     slowMo: opts?.slowMo,
+    filmReel: opts?.filmReel,
   });
   await Deno.writeTextFile(CONFIG_PATH, configContents);
 
@@ -253,8 +260,11 @@ export async function runScript(
         MOZ_PROFILER_STARTUP: "1",
         MOZ_PROFILER_STARTUP_ENTRIES: "10000000",
         MOZ_PROFILER_STARTUP_INTERVAL: "10",
-        MOZ_PROFILER_STARTUP_FEATURES: "js,stack,cpu,threads,power",
+        MOZ_PROFILER_STARTUP_FEATURES: opts?.filmReel
+          ? "js,stackwalk,cpu,screenshots,power"
+          : "js,stackwalk,cpu,power",
         MOZ_PROFILER_STARTUP_THREADS: "GeckoMain,Compositor,Renderer",
+        MOZ_PROFILER_STARTUP_FILTERS: "GeckoMain,Compositor,Renderer",
         MOZ_PROFILER_SHUTDOWN: PROFILE_PATH,
       },
       stdout: "piped",

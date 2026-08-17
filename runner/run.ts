@@ -42,7 +42,7 @@ function validateConfig(raw: unknown, source: string): JourneyConfig {
 export async function runJourney(
   journeyPath: string,
   store?: ResultsStore,
-  opts?: { displayName?: string; slowMo?: boolean },
+  opts?: { displayName?: string; slowMo?: boolean; filmReel?: boolean },
 ): Promise<JourneyResult> {
   // Dispatcher: .js/.mjs/.ts go to the codegen-script pipeline; everything
   // else is treated as YAML.
@@ -74,13 +74,27 @@ export async function runJourney(
   const browser = await firefox.launch({
     headless: config.headless ?? false,
     slowMo: opts?.slowMo ? 1500 : undefined,
+    firefoxUserPrefs: opts?.filmReel
+      ? {
+        // CompositorScreenshot markers are only emitted by the basic
+        // compositor, not by WebRender. WebRender uses a different
+        // rendering pipeline that bypasses the ScreenshotGrabber.
+        // Disable WebRender to get the film reel.
+        "gfx.webrender.all": false,
+        "layers.acceleration.force-enabled": false,
+        "gfx.webrender.enabled": false,
+      }
+      : undefined,
     env: {
       ...Deno.env.toObject(),
       MOZ_PROFILER_STARTUP: "1",
       MOZ_PROFILER_STARTUP_ENTRIES: "10000000",
       MOZ_PROFILER_STARTUP_INTERVAL: "10",
-      MOZ_PROFILER_STARTUP_FEATURES: "js,stack,cpu,threads,power",
+      MOZ_PROFILER_STARTUP_FEATURES: opts?.filmReel
+        ? "js,stackwalk,cpu,screenshots,power"
+        : "js,stackwalk,cpu,power",
       MOZ_PROFILER_STARTUP_THREADS: "GeckoMain,Compositor,Renderer",
+      MOZ_PROFILER_STARTUP_FILTERS: "GeckoMain,Compositor,Renderer",
       MOZ_PROFILER_SHUTDOWN: PROFILE_PATH,
     },
   });

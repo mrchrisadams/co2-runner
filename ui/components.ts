@@ -72,6 +72,17 @@ export function renderDashboard(): string {
       margin-bottom: 1rem; cursor: pointer;
     }
     .slowmo-label input[type=checkbox] { cursor: pointer; }
+    .option-checkbox {
+      display: flex; align-items: flex-start; gap: 0.4rem;
+      font-size: 0.8rem; color: var(--muted);
+      margin-bottom: 0.5rem; cursor: pointer;
+    }
+    .option-checkbox input[type=checkbox] { cursor: pointer; margin-top: 0.1rem; }
+    .option-warning {
+      color: var(--danger); font-size: 0.75rem;
+      margin-left: 1.25rem; margin-bottom: 0.5rem; display: none;
+    }
+    .option-warning.visible { display: block; }
     #record-btn {
       background: transparent; color: var(--warn);
       border: 1px solid var(--warn);
@@ -162,10 +173,18 @@ export function renderDashboard(): string {
     <button id="record-btn">🔴 Record</button>
     <button id="run-btn" disabled>▶ Run Journey</button>
   </div>
-  <label class="slowmo-label" for="slowmo-checkbox">
+  <label class="option-checkbox" for="slowmo-checkbox">
     <input id="slowmo-checkbox" type="checkbox" />
     Run user journey with 1.5 second delay between each step
   </label>
+
+  <label class="option-checkbox" for="filmreel-checkbox">
+    <input id="filmreel-checkbox" type="checkbox" />
+    Capture film reel screenshots (viewable in Firefox Profiler)
+  </label>
+  <div id="filmreel-warning" class="option-warning">
+    ⚠️ Capturing screenshots adds computational overhead that inflates energy readings. Turn this off for accurate measurements.
+  </div>
 
   <!-- URL prompt modal for codegen recording -->
   <div id="codegen-modal" class="modal hidden">

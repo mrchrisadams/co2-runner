@@ -130,6 +130,7 @@ async function startRun() {
   btn.disabled = true;
   setStatus("⏳ Uploading journey…");
   const slowMo = document.getElementById("slowmo-checkbox").checked;
+  const filmReel = document.getElementById("filmreel-checkbox").checked;
   try {
     const contents = await selectedFile.text();
     const res = await fetch("/run", {
@@ -138,6 +139,7 @@ async function startRun() {
         journeyContents: contents,
         journeyName: selectedFile.name,
         slowMo,
+        filmReel,
       }),
       headers: { "content-type": "application/json" },
     });
@@ -287,6 +289,15 @@ document.getElementById("journey-input").addEventListener(
   onFilePicked,
 );
 document.getElementById("run-btn").addEventListener("click", startRun);
+document.getElementById("filmreel-checkbox").addEventListener(
+  "change",
+  (e) => {
+    document.getElementById("filmreel-warning").classList.toggle(
+      "visible",
+      e.target.checked,
+    );
+  },
+);
 document.getElementById("record-btn").addEventListener(
   "click",
   openCodegenModal,

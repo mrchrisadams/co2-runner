@@ -378,6 +378,7 @@ Deno.serve({ port, hostname }, async (req: Request) => {
       journeyContents?: string;
       journeyName?: string;
       slowMo?: boolean;
+      filmReel?: boolean;
     };
     try {
       body = await req.json();
@@ -451,7 +452,11 @@ Deno.serve({ port, hostname }, async (req: Request) => {
       );
     }
 
-    runJourney(journeyPath, store, { displayName, slowMo: !!body.slowMo })
+    runJourney(journeyPath, store, {
+      displayName,
+      slowMo: !!body.slowMo,
+      filmReel: !!body.filmReel,
+    })
       .then((result) => {
         try {
           history.insert(result);
