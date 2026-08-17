@@ -116,8 +116,9 @@ async function readAll(stream: ReadableStream<Uint8Array>): Promise<string> {
 function buildPlaywrightConfig(opts: {
   scriptPath: string; // absolute
   harPath: string; // absolute
+  slowMo?: boolean;
 }): string {
-  const { scriptPath, harPath } = opts;
+  const { scriptPath, harPath, slowMo } = opts;
   // testDir is the parent of the script; testMatch is the script basename.
   const scriptDir = scriptPath.substring(0, scriptPath.lastIndexOf("/"));
   const scriptName = scriptPath.substring(scriptPath.lastIndexOf("/") + 1);
@@ -137,6 +138,7 @@ export default defineConfig({
     // meaningful (and is confusing UX: the user clicks Run and sees
     // nothing happen until the energy figure appears).
     headless: false,
+    ${slowMo ? "slowMo: 1500," : "// slowMo disabled"}
     contextOptions: {
       recordHar: {
         path: ${JSON.stringify(harPath)},
@@ -163,7 +165,7 @@ export default defineConfig({
 export async function runScript(
   scriptPath: string,
   store?: ResultsStore,
-  opts?: { displayName?: string },
+  opts?: { displayName?: string; slowMo?: boolean },
 ): Promise<JourneyResult> {
   const ARTEFACTS_DIR = artefactsDir();
   await Deno.mkdir(ARTEFACTS_DIR, { recursive: true });
@@ -188,6 +190,7 @@ export async function runScript(
   const configContents = buildPlaywrightConfig({
     scriptPath: absScriptPath,
     harPath: HAR_PATH,
+    slowMo: opts?.slowMo,
   });
   await Deno.writeTextFile(CONFIG_PATH, configContents);
 

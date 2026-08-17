@@ -66,6 +66,12 @@ export function renderDashboard(): string {
       border: none; border-radius: 6px; cursor: pointer; font-weight: 600;
     }
     .run-form button:disabled { opacity: 0.5; cursor: not-allowed; }
+    .slowmo-label {
+      display: flex; align-items: center; gap: 0.4rem;
+      font-size: 0.8rem; color: var(--muted);
+      margin-bottom: 1rem; cursor: pointer;
+    }
+    .slowmo-label input[type=checkbox] { cursor: pointer; }
     #record-btn {
       background: transparent; color: var(--warn);
       border: 1px solid var(--warn);
@@ -124,7 +130,7 @@ export function renderDashboard(): string {
     .metric-label .grid-select {
       background: var(--bg); color: var(--muted); border: 1px solid var(--border);
       border-radius: 4px; padding: 0.1rem 0.3rem; font-size: 0.7rem;
-      margin-top: 0.25rem; max-width: 320px;
+      margin-top: 0.25rem; max-width: 420px;
     }
     .result-time { font-size: 0.75rem; color: var(--muted); margin-top: 0.5rem; }
     .action-row { margin: 0.5rem 0 0; display: flex; gap: 1rem; font-size: 0.85rem; }
@@ -156,6 +162,10 @@ export function renderDashboard(): string {
     <button id="record-btn">🔴 Record</button>
     <button id="run-btn" disabled>▶ Run Journey</button>
   </div>
+  <label class="slowmo-label" for="slowmo-checkbox">
+    <input id="slowmo-checkbox" type="checkbox" />
+    Run user journey with 1.5 second delay between each step
+  </label>
 
   <!-- URL prompt modal for codegen recording -->
   <div id="codegen-modal" class="modal hidden">

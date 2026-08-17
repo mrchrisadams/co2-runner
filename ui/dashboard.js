@@ -129,6 +129,7 @@ async function startRun() {
   const btn = document.getElementById("run-btn");
   btn.disabled = true;
   setStatus("⏳ Uploading journey…");
+  const slowMo = document.getElementById("slowmo-checkbox").checked;
   try {
     const contents = await selectedFile.text();
     const res = await fetch("/run", {
@@ -136,6 +137,7 @@ async function startRun() {
       body: JSON.stringify({
         journeyContents: contents,
         journeyName: selectedFile.name,
+        slowMo,
       }),
       headers: { "content-type": "application/json" },
     });

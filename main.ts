@@ -377,6 +377,7 @@ Deno.serve({ port, hostname }, async (req: Request) => {
       journeyYaml?: string; // legacy alias for journeyContents (pre-codegen)
       journeyContents?: string;
       journeyName?: string;
+      slowMo?: boolean;
     };
     try {
       body = await req.json();
@@ -450,7 +451,7 @@ Deno.serve({ port, hostname }, async (req: Request) => {
       );
     }
 
-    runJourney(journeyPath, store, { displayName })
+    runJourney(journeyPath, store, { displayName, slowMo: !!body.slowMo })
       .then((result) => {
         try {
           history.insert(result);

@@ -42,7 +42,7 @@ function validateConfig(raw: unknown, source: string): JourneyConfig {
 export async function runJourney(
   journeyPath: string,
   store?: ResultsStore,
-  opts?: { displayName?: string },
+  opts?: { displayName?: string; slowMo?: boolean },
 ): Promise<JourneyResult> {
   // Dispatcher: .js/.mjs/.ts go to the codegen-script pipeline; everything
   // else is treated as YAML.
@@ -73,6 +73,7 @@ export async function runJourney(
 
   const browser = await firefox.launch({
     headless: config.headless ?? false,
+    slowMo: opts?.slowMo ? 1500 : undefined,
     env: {
       ...Deno.env.toObject(),
       MOZ_PROFILER_STARTUP: "1",
