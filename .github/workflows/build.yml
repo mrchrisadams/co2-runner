@@ -21,7 +21,8 @@ jobs:
       - run: deno fmt --check
       - run: deno lint
       - run: deno check .
-      - run: deno test --allow-all
+      - name: Run tests (headless runner via xvfb)
+        run: xvfb-run -a deno test --allow-all
 
   build-cli:
     needs: test
