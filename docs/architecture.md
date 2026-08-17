@@ -224,7 +224,7 @@ graph LR
 
     LW -->|loads| LIBRT
     LIBRT -->|imports| MAIN["main.ts<br/>(route handler + Deno.serve)"]
-    MAIN -->|spawns subprocess via<br/>findDenoBinary()| BUNDLED
+    MAIN -->|spawns subprocess via<br/>findDenoBinary| BUNDLED
 ```
 
 When the user double-clicks the app:
