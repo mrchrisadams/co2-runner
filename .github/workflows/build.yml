@@ -3,7 +3,7 @@ name: build
 on:
   push:
     branches: [main]
-    tags: ["v*"]
+    tags: ["v*", "2026*"]
   pull_request:
     branches: [main]
 
@@ -67,19 +67,17 @@ jobs:
           deno-version: v2.9.x
       - name: Build desktop bundle (aarch64-apple-darwin only)
         run: deno task desktop
-      - name: Verify app bundle exists
-        run: test -d dist/CO2Runner.app
-      - name: Zip app bundle for upload
-        run: ditto -c -k --keepParent dist/CO2Runner.app CO2Runner-aarch64-apple-darwin.zip
-      - name: Upload artifact
+      - name: Verify DMG exists
+        run: test -f dist/CO2Runner.dmg
+      - name: Upload DMG artifact
         uses: actions/upload-artifact@v4
         with:
-          name: CO2Runner-aarch64-apple-darwin
-          path: CO2Runner-aarch64-apple-darwin.zip
+          name: CO2Runner-aarch64-apple-darwin.dmg
+          path: dist/CO2Runner.dmg
           if-no-files-found: error
 
   release:
-    if: startsWith(github.ref, 'refs/tags/v')
+    if: startsWith(github.ref, 'refs/tags/v') || startsWith(github.ref, 'refs/tags/2026')
     needs: [build-cli, build-desktop]
     runs-on: ubuntu-latest
     permissions:
