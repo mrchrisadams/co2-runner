@@ -20,10 +20,30 @@ async function canReach(url: string): Promise<boolean> {
   }
 }
 
+// Energy measurement reads hardware power counters. On Linux these are
+// exposed via perf_event, which many hosts (including GitHub Actions
+// runners) restrict via /proc/sys/kernel/perf_event_paranoid — when that's
+// the case the journey can still run but produces no power data, so we skip
+// the assertion that a non-trivial energy figure was captured.
+async function canMeasureEnergy(): Promise<boolean> {
+  if (Deno.build.os !== "linux") return true;
+  try {
+    const text = await Deno.readTextFile(
+      "/proc/sys/kernel/perf_event_paranoid",
+    );
+    const value = parseInt(text.trim(), 10);
+    // > 1 disallows unprivileged perf sampling of other processes.
+    return value <= 1;
+  } catch {
+    return true;
+  }
+}
+
 Deno.test({
   name: "runJourney dispatches .spec.js to the codegen-script pipeline",
   ignore: !(await isFirefoxInstalled()) ||
-    !(await canReach("https://branch.climateaction.tech/")),
+    !(await canReach("https://branch.climateaction.tech/")) ||
+    !(await canMeasureEnergy()),
   fn: async () => {
     // Use the bundled example.spec.js — mirrors example.yaml.
     const scriptPath = "./journeys/example.spec.js";
