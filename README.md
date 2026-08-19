@@ -39,6 +39,11 @@ co2-runner run <journey>        Runs a journey + emits energy figures
     .js / .mjs / .ts            — Playwright codegen script (see journeys/example.spec.js)
 co2-runner codegen <url> [output.spec.js]
                                 Record a new journey via Playwright codegen
+co2-runner submit <journey.yaml>
+                                Measure on the Green Metrics Tool cluster
+  --email <addr>                  Get an e-mail when the run finishes
+  --no-wait                       Submit and exit without polling
+  --print-script                  Print the generated body, submit nothing
 co2-runner serve                Starts the desktop / HTTP UI
 co2-runner --help               Show usage
 ```
@@ -127,6 +132,75 @@ requires `$DISPLAY` or `$WAYLAND_DISPLAY`).
 
 See `journeys/example.yaml` for the journey config format. Energy figures are
 persisted to `~/.co2-runner/history.db` (SQLite) for cross-run comparison.
+
+## Measuring on the Green Metrics Tool cluster
+
+A local measurement tells you about _your machine_. It answers "did my change
+make this page cheaper on this laptop" well, and "how does this site compare to
+others" not at all. Your CPU, your thermal state and whatever else was running
+are all in the number.
+
+co2-runner can also hand a journey to the [Green Metrics Tool][gmt] cluster, the
+same backend behind [webNRG][webnrg], which reads CPU energy from RAPL on
+dedicated hardware and keeps every run in a public database you can chart over
+time.
+
+```sh
+# See exactly what would be sent, send nothing
+./co2-runner submit journeys/example.yaml --print-script
+
+# Submit and wait for the result (5–30 minutes)
+./co2-runner submit journeys/example.yaml --email me@example.com
+```
+
+Or click **☁️ Measure on cluster** in the UI after picking a journey. Either way
+you get a preview of the generated snippet first.
+
+### What actually gets sent
+
+Your YAML journey is translated into a bare Playwright snippet (GMT takes a
+statement body, not a journey file) and POSTed to `gateway.green-coding.io`.
+`journeys/example.yaml` becomes:
+
+```js
+await page.goto("https://branch.climateaction.tech/");
+await page.waitForLoadState("networkidle");
+{
+  let remaining = 600;
+  while (remaining > 0) {
+    const chunk = Math.min(180, remaining);
+    await page.mouse.wheel(0, 1 * chunk);
+    remaining -= chunk;
+    await page.waitForTimeout(110);
+  }
+}
+await page.waitForTimeout(3000);
+await page.locator("role=link[name='Go to issue 9']").click();
+...
+```
+
+**This leaves your machine.** The URL, that snippet and your e-mail (if given)
+go to `gateway.green-coding.io`, and the finished run is publicly listed on
+`metrics.green-coding.io`. It is the only part of co2-runner that contacts a
+third party, so it never happens without an explicit click or command, never
+automatically after a local run.
+
+### The two numbers are not a before/after
+
+co2-runner and the cluster measure different things:
+
+|          | Local                                  | Cluster                                |
+| -------- | -------------------------------------- | -------------------------------------- |
+| Source   | Mozilla Profiler power counters        | RAPL package energy                    |
+| Scope    | whole Firefox process, entire journey  | journey phase only, inside a container |
+| Hardware | your machine, whatever else is running | dedicated cluster machine              |
+| Network  | live                                   | warm cache behind a Squid proxy        |
+
+Each is meaningful against **its own** history. A ratio between them is not.
+That is why the UI shows them side by side and does not compute a difference.
+
+[gmt]: https://www.green-coding.io/projects/green-metrics-tool/
+[webnrg]: https://website-tester.green-coding.io/
 
 ## Building distributable binaries
 

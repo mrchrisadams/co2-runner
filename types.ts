@@ -72,3 +72,55 @@ export interface CodegenProgress {
   outputPath?: string;
   message: string;
 }
+
+// ── Green Metrics Tool submission ──────────────────────────────────────────
+// co2-runner can hand a YAML journey to the Green Metrics Tool cluster (the
+// same measurement backend webNRG / website-tester.green-coding.io uses) so a
+// local Firefox-profiler reading can be put next to a RAPL reading taken on
+// dedicated hardware. See runner/gmt.ts.
+
+/** Metrics pulled from GMT's phase_stats for the journey phase. */
+export interface GmtMetrics {
+  /** GMT run UUID — the handle for the details / timeline pages. */
+  runId: string;
+  /** RAPL package energy for the journey phase. */
+  cpuEnergyMWh: number | null;
+  cpuPowerW: number | null;
+  durationSeconds: number | null;
+  networkTransferKb: number | null;
+  networkCarbonG: number | null;
+  carbonIntensityGCO2PerKWh: number | null;
+  /** Link to the full run on metrics.green-coding.io. */
+  detailsUrl: string;
+}
+
+export type GmtStatus = "pending" | "complete" | "error";
+
+/** A journey handed to the GMT cluster, as persisted in the history DB. */
+export interface GmtSubmission {
+  /** Gateway job id — the handle we poll on until a run appears. */
+  jobId: number;
+  journeyName: string;
+  /** The URL GMT opens before running the journey body. */
+  page: string;
+  submittedAt: string;
+  status: GmtStatus;
+  /** mWh from the most recent local run of the same journey, if any. */
+  localMWh: number | null;
+  metrics: GmtMetrics | null;
+  error: string | null;
+}
+
+/** Live status of a submission, streamed to the UI over SSE. */
+export interface GmtProgress {
+  jobId: number;
+  journeyName: string;
+  /** The URL the cluster opens — shown on the card while it is still pending. */
+  page?: string;
+  status: GmtStatus;
+  message: string;
+  /** How long we have been waiting on the cluster, in seconds. */
+  waitedSeconds?: number;
+  metrics?: GmtMetrics;
+  localMWh?: number | null;
+}

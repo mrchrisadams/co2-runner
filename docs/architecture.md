@@ -22,6 +22,7 @@ graph LR
     EM["Electricity Maps<br/>Grid intensity data<br/>(embedded 2025 dataset)"]
     SITE["Target Website<br/>(the site being measured)"]
     PROFILER["profiler.firefox.com<br/>(user opens profile JSON here<br/>for timeline/film reel)"]
+    GMT["Green Metrics Tool cluster<br/>gateway + api.green-coding.io<br/>(RAPL on dedicated hardware)"]
 
     USER -->|records via codegen / runs YAML or .spec.js| CO2
     CO2 -->|drives headed Firefox| FF
@@ -29,6 +30,9 @@ graph LR
     CO2 -->|reads grid intensity| EM
     CO2 -->|produces profile JSON + HAR| USER
     USER -->|opens profile JSON at| PROFILER
+    USER -.->|explicit opt-in per submission| GMT
+    CO2 -.->|submits YAML journey as a<br/>Playwright snippet, polls for metrics| GMT
+    GMT -->|measures| SITE
 ```
 
 **Key external dependencies:**
@@ -42,6 +46,11 @@ graph LR
 - **profiler.firefox.com** — not a dependency at build or runtime, but the
   recommended tool for opening the resulting profile JSON. Users can scrub
   through the visual timeline + power data.
+- **Green Metrics Tool cluster** (dashed above — optional, opt-in) — the only
+  service co2-runner sends data _to_. A YAML journey can be measured on Green
+  Coding Solutions' hardware instead of locally, via the same gateway webNRG
+  uses. Never contacted implicitly: every submission is an explicit click or
+  `co2-runner submit` invocation. See ADR-006 and the flow section below.
 
 ---
 
@@ -324,7 +333,7 @@ user overrides):
 graph TB
     HOME["~/.co2-runner/<br/>(or $CO2_RUNNER_HOME)"]
 
-    HOME --> DB["history.db<br/>SQLite via node:sqlite (DatabaseSync)<br/>runs(id, name, mWh, joules, timestamp, profile)"]
+    HOME --> DB["history.db<br/>SQLite via node:sqlite (DatabaseSync)<br/>runs(id, name, mWh, joules, timestamp, profile)<br/>gmt_submissions(job_id, journey_name, page,<br/>submitted_at, status, local_mWh, metrics, error)"]
     HOME --> ART["journey-artefacts/<br/>per-run energy profile JSON + HAR<br/>(both YAML and .spec.js pipelines write here)"]
     HOME --> UP["uploaded-journeys/<br/>temp files for journeys uploaded<br/>via POST /run body"]
     HOME --> REC["recorded-journeys/<br/>output of `playwright codegen`<br/>(timestamp-host.spec.js naming)"]
@@ -351,6 +360,74 @@ broke when:
 The `ui/paths.ts` helper resolves all paths against `$CO2_RUNNER_HOME` (default
 `~/.co2-runner/`), ensuring CLI, desktop, and dev server all write to the same
 place.
+
+## GMT cluster submission (the second opinion)
+
+A local measurement is about the machine it ran on. The same YAML journey can
+also be measured on the Green Metrics Tool cluster — RAPL package energy on
+dedicated hardware, with every run kept in a public database. This is the only
+outbound data flow in co2-runner, so it is gated behind an explicit preview.
+
+```mermaid
+sequenceDiagram
+    participant U as User
+    participant D as Dashboard / CLI
+    participant J as runner/gmt-jobs.ts
+    participant G as runner/gmt.ts
+    participant DB as history.db
+    participant GW as gateway.green-coding.io
+    participant API as api.green-coding.io
+
+    U->>D: pick journey, click "Measure on cluster"
+    D->>G: POST /gmt-preview (journeyToGmtScript)
+    G-->>D: page URL + generated snippet + est. duration
+    D-->>U: modal: exact payload + "this leaves your machine"
+    U->>D: confirm (optional e-mail)
+    D->>J: POST /gmt-submit
+    J->>GW: POST /save {page, script, mode: website-script}
+    GW-->>J: { data: { job_id } }
+    J->>DB: INSERT gmt_submissions (status=pending)
+    Note over J,DB: id persisted BEFORE the wait —<br/>the run outlives this process
+    J-->>D: SSE gmt event (pending)
+    loop every 30 s, up to 90 min
+        J->>API: GET /v2/runs?job_id=
+        API-->>J: 204 / row without end_measurement / finished row
+    end
+    loop every 5 s, up to 5 min
+        J->>API: GET /v1/phase_stats/single/<uuid>
+        API-->>J: 204 (cached, measurements not written yet) / phase stats
+    end
+    J->>DB: UPDATE status=complete, metrics=...
+    J-->>D: SSE gmt event (complete)
+    D-->>U: cluster figure beside the local one, with the caveat
+```
+
+**Translation.** GMT takes a bare Playwright statement body, not a journey file
+— it base64-decodes the body and `eval`s it in a closure where `page`,
+`context`, `browser` and `sleep` are globals. `journeyToGmtScript()` maps our
+six YAML step actions onto that, one or two lines each. The output is
+deterministic (fixed 180 px / 110 ms scroll chunks rather than `executeStep()`'s
+randomised ones) so repeat submissions of a journey chart as a timeline rather
+than as noise. Codegen `.spec.js` journeys are rejected — see ADR-006.
+
+**Two waits, not one.** A run row flips to finished a little before its
+measurements are readable: `/v1/phase_stats/single` keeps answering `204` for a
+few seconds from a cache filled while the run was still going. So
+`awaitMetrics()` follows the 30 s/90 min run poll with a second, tighter one —
+`awaitPhaseStats()`, every 5 s for up to 5 min — instead of reporting the first
+`204` as "measurements are not available yet" and throwing away a finished run.
+Only `204`, `429` and `5xx` are retried (`MetricsNotReadyError`); a `4xx` is
+final and fails straight away.
+
+**Resumption.** `resumePendingSubmissions()` runs at server startup and picks up
+rows left `pending` by a previous process. Each resumed poll carries its
+original `submitted_at` as `startedAtMs`, so a stale job ages out on its first
+check instead of getting a fresh 90-minute budget on every restart.
+
+**Module split.** `runner/gmt.ts` is pure protocol — convert, POST, poll, parse
+— with all I/O injectable via `GmtDeps` for testing. `runner/gmt-jobs.ts` owns
+everything around it: persistence, the SSE broadcast, and resumption. The split
+is what lets the whole protocol be tested against fixtures with no network.
 
 ## In-memory event bus (SSE)
 
@@ -496,21 +573,23 @@ requirements.
 
 ## Test layout
 
-88 tests total across four directories:
+129 tests total across four directories:
 
 ```mermaid
 graph TB
-    subgraph "tests/runner/ (33 tests)"
+    subgraph "tests/runner/ (71 tests)"
         ENERGY_T["energy_test.ts<br/>(5 tests)"]
         RUN_T["run_test.ts<br/>(8 tests)"]
         RUNSCRIPT_T["run-script_test.ts<br/>(4 tests)"]
         CODEGEN_T["codegen_test.ts<br/>(6 tests)"]
         INSTALL_T["install_test.ts<br/>(3 tests)"]
         CO2_T["co2_test.ts<br/>(7 tests)"]
+        GMT_T["gmt_test.ts<br/>(27 tests — fetch-stubbed protocol)"]
+        GMTJOBS_T["gmt-jobs_test.ts<br/>(11 tests — submission lifecycle)"]
     end
 
-    subgraph "tests/ui/ (21 tests)"
-        COMPONENTS_T["components_test.ts<br/>(4 tests)"]
+    subgraph "tests/ui/ (24 tests)"
+        COMPONENTS_T["components_test.ts<br/>(7 tests)"]
         RESULTS_T["results_test.ts<br/>(6 tests)"]
         HISTORY_T["history_test.ts<br/>(6 tests)"]
         PATHS_T["paths_test.ts<br/>(5 tests)"]
@@ -521,8 +600,8 @@ graph TB
         DENOBIN_T["deno-bin_test.ts<br/>(6 tests)"]
     end
 
-    subgraph "tests/integration/ (24 tests)"
-        HTTP_T["http_test.ts<br/>(8 tests)"]
+    subgraph "tests/integration/ (29 tests)"
+        HTTP_T["http_test.ts<br/>(13 tests)"]
         INSTALL_T2["install_test.ts<br/>(7 tests)"]
         CODEGEN_T2["codegen_test.ts<br/>(4 tests)"]
         DESKTOP_T["desktop_launch_test.ts<br/>(1 test)"]
@@ -544,5 +623,6 @@ graph TB
   - ADR 003: Integrate `playwright codegen` into the app
   - ADR 004: Bundle standalone Deno CLI into the desktop app
   - ADR 005: No filmreel in macOS Firefox Profiler JSON
+  - ADR 006: Submitting journeys to the Green Metrics Tool cluster
 - **Plan**: `plan.md` for the phased implementation history.
 - **README**: `README.md` for usage + caveats from an end-user perspective.

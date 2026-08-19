@@ -22,7 +22,7 @@ export function renderDashboard(): string {
   <style>
     :root {
       --bg: #0f1117; --surface: #1a1d27; --accent: #4ade80;
-      --warn: #fbbf24; --danger: #f87171;
+      --warn: #fbbf24; --danger: #f87171; --info: #60a5fa;
       --text: #e2e8f0; --muted: #64748b; --border: #2d3148;
       font-family: system-ui, sans-serif;
     }
@@ -153,6 +153,73 @@ export function renderDashboard(): string {
     }
     .em-footer a { color: var(--accent); text-decoration: none; }
     .em-footer a:hover { text-decoration: underline; }
+
+    /* ── Green Metrics Tool cluster submission ────────────────────────── */
+    #gmt-btn {
+      background: transparent; color: var(--info);
+      border: 1px solid var(--info);
+    }
+    #gmt-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+    .modal-content.wide { max-width: 700px; }
+    .script-preview {
+      background: var(--bg); border: 1px solid var(--border);
+      border-radius: 6px; padding: 0.75rem; margin-bottom: 1rem;
+      max-height: 220px; overflow: auto;
+      font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+      font-size: 0.75rem; line-height: 1.5; color: var(--text);
+      white-space: pre; tab-size: 2;
+    }
+    .privacy-note {
+      background: rgba(251, 191, 36, 0.1);
+      border-left: 3px solid var(--warn);
+      color: var(--text); font-size: 0.8rem; line-height: 1.5;
+      padding: 0.6rem 0.75rem; margin-bottom: 1rem; border-radius: 0 6px 6px 0;
+    }
+    .modal-btn-info {
+      background: var(--info); color: #000;
+      border: none; border-radius: 6px;
+      padding: 0.5rem 1rem; cursor: pointer; font-weight: 600;
+    }
+    .modal-btn-info:disabled { opacity: 0.5; cursor: not-allowed; }
+    .gmt-section-title {
+      font-size: 0.95rem; color: var(--info);
+      margin: 2rem 0 0.5rem; font-weight: 600;
+    }
+    .gmt-section-title.hidden { display: none; }
+    #gmt-results { display: grid; gap: 1rem; }
+    .gmt-card {
+      background: var(--surface); border: 1px solid var(--border);
+      border-left: 3px solid var(--info);
+      border-radius: 10px; padding: 1.25rem;
+    }
+    .gmt-card.failed { border-left-color: var(--danger); }
+    .gmt-card-head {
+      display: flex; align-items: baseline; gap: 0.75rem; flex-wrap: wrap;
+    }
+    .gmt-card-name { font-weight: 600; }
+    .gmt-card-page { color: var(--muted); font-size: 0.8rem; }
+    .gmt-status {
+      font-size: 0.85rem; color: var(--muted); margin-top: 0.4rem;
+    }
+    .gmt-status.pending::before { content: "⏳ "; }
+    .gmt-status.error { color: var(--danger); }
+    .gmt-metrics {
+      display: grid; gap: 0.75rem 2rem; margin-top: 0.9rem;
+      grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+    }
+    .gmt-metric-value {
+      font-size: 1.15rem; font-weight: 700; color: var(--info);
+    }
+    .gmt-metric-value.local { color: var(--accent); }
+    .gmt-metric-label { font-size: 0.7rem; color: var(--muted); }
+    .gmt-caveat {
+      color: var(--muted); font-size: 0.72rem; line-height: 1.5;
+      margin-top: 0.9rem; padding-top: 0.6rem;
+      border-top: 1px solid var(--border);
+    }
+    .gmt-links { margin-top: 0.6rem; font-size: 0.8rem; }
+    .gmt-links a { color: var(--info); text-decoration: none; }
+    .gmt-links a:hover { text-decoration: underline; }
   </style>
 </head>
 <body>
@@ -171,6 +238,7 @@ export function renderDashboard(): string {
       <input id="journey-input" type="file" accept=".yaml,.yml,.js,.mjs,.ts" />
     </label>
     <button id="record-btn">🔴 Record</button>
+    <button id="gmt-btn" disabled title="Measure this journey on the Green Metrics Tool cluster instead of locally">☁️ Measure on cluster</button>
     <button id="run-btn" disabled>▶ Run Journey</button>
   </div>
   <label class="option-checkbox" for="slowmo-checkbox">
@@ -208,12 +276,46 @@ export function renderDashboard(): string {
       </div>
     </div>
   </div>
+  <!-- Confirmation modal for a Green Metrics Tool cluster submission.
+       Shows the exact payload before anything leaves the machine. -->
+  <div id="gmt-modal" class="modal hidden">
+    <div class="modal-content wide">
+      <h3>Measure on the Green Metrics Tool cluster</h3>
+      <p class="modal-hint">
+        Your journey is translated into a Playwright snippet and measured on
+        Green Coding Solutions' cluster, which reads CPU energy from RAPL on
+        dedicated hardware. Results usually take 5&ndash;30 minutes.
+      </p>
+      <div class="privacy-note">
+        <b>This leaves your machine.</b> The target URL, the snippet below and
+        your e-mail (if given) are sent to
+        <b>gateway.green-coding.io</b> and the run is publicly listed on
+        metrics.green-coding.io.
+      </div>
+      <div><span class="gmt-card-page">Target URL:</span> <span id="gmt-preview-page"></span></div>
+      <div><span class="gmt-card-page">Estimated length:</span> <span id="gmt-preview-duration"></span></div>
+      <pre id="gmt-preview-script" class="script-preview"></pre>
+      <input
+        id="gmt-email-input"
+        type="email"
+        placeholder="Your e-mail (optional — the cluster pings you when done)"
+        class="modal-input"
+      />
+      <div class="modal-actions">
+        <button id="gmt-cancel" class="modal-btn-secondary">Cancel</button>
+        <button id="gmt-confirm" class="modal-btn-info">☁️ Submit to cluster</button>
+      </div>
+    </div>
+  </div>
   <div id="status"></div>
   <div class="action-row">
     <span class="action-link" id="load-history-link">Load history</span>
     <span class="action-link" id="open-home-link">📂 Open co2-runner home directory</span>
   </div>
   <div id="results"></div>
+
+  <div id="gmt-section-title" class="gmt-section-title hidden">☁️ Green Metrics Tool cluster</div>
+  <div id="gmt-results"></div>
 
   <footer class="em-footer">
     Carbon intensity data from
