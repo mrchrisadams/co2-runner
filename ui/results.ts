@@ -3,6 +3,7 @@
 
 import type {
   CodegenProgress,
+  GmtProgress,
   InstallProgress,
   JourneyProgress,
   JourneyResult,
@@ -15,6 +16,7 @@ export type StoreEvent =
   | { type: "progress"; progress: JourneyProgress }
   | { type: "install"; install: InstallProgress }
   | { type: "codegen"; codegen: CodegenProgress }
+  | { type: "gmt"; gmt: GmtProgress }
   | { type: "firefox-status"; installed: boolean };
 
 export class ResultsStore {
@@ -47,6 +49,10 @@ export class ResultsStore {
       this.codegenInProgress = false;
     }
     this.emit({ type: "codegen", codegen: p });
+  }
+
+  gmtProgress(p: GmtProgress): void {
+    this.emit({ type: "gmt", gmt: p });
   }
 
   setFirefoxInstalled(installed: boolean): void {
