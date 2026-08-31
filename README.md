@@ -1,11 +1,21 @@
 # co2-runner
 
+> [!WARNING] This not a commercially supported project.
+> 
+> This app was put together in a weekend to show that you can now use sophisticated playwright scripts to drive a real browser and track the actual, recorded client-side energy consumption, instead of relying on estimates based on page size, and you can do so in (somewhat) usable graphical user interface.
+>
+> You don't need to be a terminal whiz to get energy readings from a browser now.
+> 
+> 
+
+
+
 A Deno-based CLI tool that drives Playwright's bundled Firefox through
 YAML-defined user journeys, records real browser energy consumption via the
 Mozilla Profiler's power counters, and presents results in a desktop webview UI
 (or stdout in headless CLI mode).
 
-Based on the design at <https://github.com/mrchrisadams/playwright-co2>.
+Based on the design at <https://github.com/mrchrisadams/playwright-co2>, and informed by prior from [Fershad Irani](fershad.com), the [Mozilla Firefox performance and devtools team](https://profiler.firefox.com), and [Janne Kalliola's recent peer reviewed paper - Evaluating Front-end Web Energy Consumption: Quantifying the Role of Caching, Cookies, Scrolling Behavior, and Data Volume](https://dl.acm.org/doi/10.1145/3836737)
 
 ## Requirements
 
