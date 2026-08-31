@@ -22,6 +22,13 @@ import {
   uploadsDir,
 } from "./ui/paths.ts";
 import { gridIntensityEntries } from "./runner/co2.ts";
+import {
+  resumePendingSubmissions,
+  submitJourney,
+  watchSubmission,
+} from "./runner/gmt-jobs.ts";
+import { journeyToGmtScript, loadJourneyForGmt } from "./runner/gmt.ts";
+import { parseJourneyConfig } from "./runner/journey-config.ts";
 
 const args = Deno.args;
 const isServeMode = args[0] === "serve";
@@ -39,6 +46,11 @@ USAGE:
       .js / .mjs / .ts                   Playwright codegen script
   co2-runner codegen <url> [output.spec.js]
                                          Record a journey via Playwright codegen
+  co2-runner submit <journey.yaml>       Measure the journey on the Green Metrics
+                                         Tool cluster instead of locally
+    --email <addr>                       Get an e-mail when the run finishes
+    --no-wait                            Submit and exit without polling
+    --print-script                       Print the generated body, submit nothing
   co2-runner serve                       Start the HTTP / desktop UI
   co2-runner --help                      Show this message
 
@@ -52,6 +64,7 @@ EXAMPLES:
   co2-runner run journeys/example.yaml
   co2-runner run journeys/example.spec.js
   co2-runner codegen https://branch.climateaction.tech/
+  co2-runner submit journeys/example.yaml --email me@example.com
   co2-runner serve
 `;
 
@@ -68,7 +81,7 @@ if (!isDesktopMode) {
 
   if (
     args[0] !== "install" && args[0] !== "run" && args[0] !== "serve" &&
-    args[0] !== "codegen"
+    args[0] !== "codegen" && args[0] !== "submit"
   ) {
     console.error(`unknown subcommand: ${args[0]}\n\n${USAGE}`);
     Deno.exit(1);
@@ -161,6 +174,108 @@ if (args[0] === "codegen") {
   Deno.exit(0);
 }
 
+// ── CLI subcommand: submit ──────────────────────────────────────────────────
+// `co2-runner submit <journey.yaml>` — measures the journey on the Green
+// Metrics Tool cluster (RAPL on dedicated hardware) instead of locally.
+// The journey is translated to a bare Playwright body and POSTed to the
+// green-coding gateway; see runner/gmt.ts for the protocol and for why the
+// resulting figure is not directly comparable to a local one.
+if (args[0] === "submit") {
+  const journeyPath = args[1];
+  if (!journeyPath || journeyPath.startsWith("--")) {
+    console.error("Usage: co2-runner submit <journey.yaml>\n\n" + USAGE);
+    Deno.exit(1);
+  }
+
+  const flags = args.slice(2);
+  const emailIdx = flags.indexOf("--email");
+  const email = emailIdx === -1 ? undefined : flags[emailIdx + 1];
+  if (emailIdx !== -1 && (!email || email.startsWith("--"))) {
+    console.error("--email needs an address");
+    Deno.exit(1);
+  }
+  const noWait = flags.includes("--no-wait");
+
+  // Dry run: show exactly what would be sent, send nothing.
+  if (flags.includes("--print-script")) {
+    const { script } = await loadJourneyForGmt(journeyPath);
+    console.log(`page:   ${script.page}`);
+    console.log(`length: ~${script.estimatedSeconds}s\n`);
+    console.log(script.script);
+    Deno.exit(0);
+  }
+
+  console.log(`Submitting ${journeyPath} to the Green Metrics Tool cluster…`);
+  const submitHistory = new History(defaultDbPath());
+  const outcome = await submitJourney({
+    journeyPath,
+    email,
+    history: submitHistory,
+  }).catch((err: Error) => {
+    console.error(`\n⚠️  ${err.message}`);
+    submitHistory.close();
+    Deno.exit(1);
+  });
+
+  const submission = outcome.submission;
+  console.log(`\n✅ Queued as job ${submission.jobId}`);
+  console.log(`   page:   ${submission.page}`);
+  console.log(`   follow: ${outcome.jobUrl}`);
+
+  if (noWait) {
+    console.log(
+      `\nNot waiting (--no-wait). Run \`co2-runner serve\` later and the ` +
+        `result will be picked up automatically.`,
+    );
+    submitHistory.close();
+    Deno.exit(0);
+  }
+
+  console.log(`\nWaiting for the cluster — this usually takes 5–30 minutes.`);
+  const watched = await watchSubmission(
+    submission,
+    submitHistory,
+    // Progress goes to stderr so stdout stays a clean report.
+    { gmtProgress: (p) => console.error(`   … ${p.message}`) },
+  );
+  submitHistory.close();
+
+  if (!watched.ok) {
+    console.error(`\n⚠️  ${watched.error}`);
+    Deno.exit(1);
+  }
+
+  const m = watched.metrics;
+  const fmt = (v: number | null, digits: number, unit: string) =>
+    v === null ? "N/A" : `${v.toFixed(digits)} ${unit}`;
+
+  console.log(`\n=== GMT Cluster Report: ${submission.journeyName} ===`);
+  console.log(`Rendering energy   ${fmt(m.cpuEnergyMWh, 4, "mWh")}`);
+  console.log(`Rendering power    ${fmt(m.cpuPowerW, 2, "W")}`);
+  console.log(`Phase duration     ${fmt(m.durationSeconds, 2, "s")}`);
+  console.log(`Network transfer   ${fmt(m.networkTransferKb, 2, "kB")}`);
+  console.log(`Network carbon     ${fmt(m.networkCarbonG, 4, "gCO2e")}`);
+  console.log(
+    `Grid intensity     ${fmt(m.carbonIntensityGCO2PerKWh, 0, "gCO2e/kWh")}`,
+  );
+  console.log(`Details            ${m.detailsUrl}`);
+
+  if (submission.localMWh !== null) {
+    console.log(
+      `\nYour last local run of this journey: ${
+        submission.localMWh.toFixed(4)
+      } mWh.`,
+    );
+    console.log(
+      `These are different measurements, not a before/after: local sums the\n` +
+        `whole Firefox process on this machine across the entire journey, while\n` +
+        `the cluster reports RAPL package energy for the journey phase only, in\n` +
+        `a container with a warm cache. Compare trends, not absolute values.`,
+    );
+  }
+  Deno.exit(0);
+}
+
 // ── HTTP server (dev + desktop modes) ───────────────────────────────────────
 const store = new ResultsStore();
 const history = new History(defaultDbPath());
@@ -169,9 +284,30 @@ const history = new History(defaultDbPath());
 // status to subscribers (UI uses this to enable/disable the Run button).
 isFirefoxInstalled().then((installed) => store.setFirefoxInstalled(installed));
 
+// Pick up any GMT cluster submissions that were still pending when we last
+// exited. Cluster runs take 5-30 minutes, so it is normal for the app to be
+// closed before a result lands.
+const resumed = resumePendingSubmissions(history, store);
+if (resumed.length > 0) {
+  console.log(
+    `Resuming ${resumed.length} pending GMT submission(s): ${
+      resumed.map((s) => s.jobId).join(", ")
+    }`,
+  );
+}
+
 function sseEncode(event: StoreEvent): string {
   return `data: ${JSON.stringify(event)}\n\n`;
 }
+
+const jsonResponse = (body: unknown, status = 200) =>
+  new Response(JSON.stringify(body), {
+    status,
+    headers: { "content-type": "application/json" },
+  });
+
+const jsonError = (error: string, status: number) =>
+  jsonResponse({ error }, status);
 
 // Resolve a client-supplied journey path against the journeys/ root and
 // refuse anything that escapes it. Prevents the /run endpoint from being
@@ -489,6 +625,104 @@ Deno.serve({ port, hostname }, async (req: Request) => {
     return new Response(JSON.stringify({ started: true }), {
       headers: { "content-type": "application/json" },
     });
+  }
+
+  // ── Green Metrics Tool cluster submission ────────────────────────────
+  //
+  // Two endpoints: /gmt-preview converts a journey and returns what *would*
+  // be sent (no network call), and /gmt-submit actually sends it. The preview
+  // exists so the UI can show the user the exact script and target URL before
+  // anything leaves the machine — this is the only feature that talks to a
+  // third-party service, so it never fires without a deliberate click.
+
+  if (url.pathname === "/gmt-preview" && req.method === "POST") {
+    let body: { journeyContents?: string; journeyName?: string };
+    try {
+      body = await req.json();
+    } catch {
+      return jsonError("invalid JSON body", 400);
+    }
+    if (typeof body.journeyContents !== "string") {
+      return jsonError("'journeyContents' is required", 400);
+    }
+    try {
+      const config = parseJourneyConfig(
+        body.journeyContents,
+        body.journeyName ?? "journey",
+      );
+      const script = journeyToGmtScript(config);
+      return jsonResponse({
+        journeyName: config.name,
+        page: script.page,
+        script: script.script,
+        estimatedSeconds: script.estimatedSeconds,
+        localMWh: history.latestByName(config.name)?.mWh ?? null,
+      });
+    } catch (err) {
+      return jsonError((err as Error).message, 400);
+    }
+  }
+
+  if (url.pathname === "/gmt-submit" && req.method === "POST") {
+    let body: {
+      journeyContents?: string;
+      journeyName?: string;
+      email?: string;
+    };
+    try {
+      body = await req.json();
+    } catch {
+      return jsonError("invalid JSON body", 400);
+    }
+    if (typeof body.journeyContents !== "string") {
+      return jsonError("'journeyContents' is required", 400);
+    }
+
+    const uploadedName = body.journeyName ?? "uploaded-journey.yaml";
+    if (!/\.ya?ml$/i.test(uploadedName)) {
+      return jsonError(
+        "only YAML journeys can be submitted to the GMT cluster — " +
+          "codegen .spec.js journeys are not supported yet",
+        400,
+      );
+    }
+
+    // Same staging dir as /run: the converter reads from disk so the journey
+    // path is the shared interface between the two pipelines.
+    const dir = uploadsDir();
+    await Deno.mkdir(dir, { recursive: true });
+    const safeName = uploadedName.replace(/[^\w.-]/g, "_");
+    const stagedPath = `${dir}/${Date.now()}-gmt-${safeName}`;
+    await Deno.writeTextFile(stagedPath, body.journeyContents);
+
+    try {
+      const outcome = await submitJourney({
+        journeyPath: stagedPath,
+        displayName: uploadedName,
+        email: body.email?.trim() || undefined,
+        history,
+        store,
+      });
+      // Poll in the background; the UI follows along over SSE.
+      watchSubmission(outcome.submission, history, store)
+        .catch((err) => console.error(`GMT watch failed: ${err.message}`));
+
+      return jsonResponse({
+        jobId: outcome.submission.jobId,
+        page: outcome.submission.page,
+        jobUrl: outcome.jobUrl,
+        localMWh: outcome.submission.localMWh,
+      });
+    } catch (err) {
+      return jsonError((err as Error).message, 502);
+    } finally {
+      await Deno.remove(stagedPath).catch(() => {});
+    }
+  }
+
+  if (url.pathname === "/gmt-submissions" && req.method === "GET") {
+    const limit = parseInt(url.searchParams.get("limit") ?? "20", 10);
+    return jsonResponse(history.recentGmtSubmissions(limit));
   }
 
   if (url.pathname === "/history" && req.method === "GET") {
