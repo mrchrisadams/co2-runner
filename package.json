@@ -15,6 +15,7 @@
   "devDependencies": {
     "@types/node": "^22",
     "esbuild": "^0.25",
+    "postject": "1.0.0-alpha.6",
     "tsx": "^4",
     "typescript": "^5"
   },
@@ -26,6 +27,7 @@
     "check": "tsc --noEmit",
     "test": "tsx --test --test-concurrency=1 --test-force-exit tests/integration/*.ts tests/runner/*.ts tests/ui/*.ts tests/util/*.ts",
     "lint": "deno lint",
-    "fmt": "deno fmt"
+    "fmt": "deno fmt",
+    "compile": "node scripts/build-cli.mjs"
   }
 }

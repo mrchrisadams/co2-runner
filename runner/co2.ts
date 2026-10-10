@@ -11,7 +11,10 @@
 // Conversion: gCO2e = Wh × intensity(gCO2/kWh) / 1000
 //
 // The data file is downloaded at build time from co2.js's GitHub repo
-// and inlined into the binary at build time by esbuild.
+// and embedded into the binary via a plain JSON import — esbuild inlines it
+// into the SEA bundle (JSON import attributes are not used here: the SEA
+// main script must be CommonJS, and tsx/esbuild both resolve the plain
+// import identically).
 
 import emData from "../data/electricity-maps-yearly-2025.json";
 
