@@ -1,6 +1,7 @@
 // main.ts — CLI subcommand router + HTTP server.
 
 import { isAbsolute, relative, resolve } from "node:path";
+import { serve } from "@hono/node-server";
 import { mkdir, realPath, remove, writeTextFile } from "./util/fsx.ts";
 import { Command } from "./util/spawn.ts";
 import { os } from "./util/platform.ts";
@@ -28,9 +29,12 @@ import { gridIntensityEntries } from "./runner/co2.ts";
 
 const args = process.argv.slice(2);
 const isServeMode = args[0] === "serve";
-// `deno desktop` sets DENO_SERVE_ADDRESS and passes no args; in that case we
-// skip CLI subcommand parsing entirely and go straight to the HTTP server.
-const isDesktopMode = !!process.env.DENO_SERVE_ADDRESS;
+// The desktop shell sets CO2_RUNNER_DESKTOP_ADDRESS (legacy: DENO_SERVE_ADDRESS
+// from `deno desktop`) and passes no args; in that case we skip CLI subcommand
+// parsing entirely and go straight to the HTTP server.
+const desktopAddress = process.env.CO2_RUNNER_DESKTOP_ADDRESS ??
+  process.env.DENO_SERVE_ADDRESS;
+const isDesktopMode = !!desktopAddress;
 
 const USAGE = `co2-runner — measure real browser energy per user journey
 
@@ -48,7 +52,10 @@ USAGE:
 ENV:
   PORT                  HTTP port for serve mode (default 8000)
   CO2_RUNNER_DB         SQLite history DB path (default ~/.co2-runner/history.db)
-  DENO_SERVE_ADDRESS    Set by \`deno desktop\`; when present, run suppresses stdout
+  CO2_RUNNER_DESKTOP_ADDRESS
+                        Set by the desktop shell; when present, run skips CLI
+                        parsing, starts the HTTP server, and suppresses stdout
+                        (legacy fallback: DENO_SERVE_ADDRESS)
 
 EXAMPLES:
   co2-runner install
@@ -103,7 +110,7 @@ if (args[0] === "run") {
   }
 
   // Pure CLI: print and exit
-  if (!isServeMode && !process.env.DENO_SERVE_ADDRESS) {
+  if (!isServeMode && !desktopAddress) {
     console.log(`\n=== Energy Report: ${result.name} ===`);
     console.log(
       `${result.mWh.toFixed(4)} mWh  (${result.joules.toFixed(4)} J)`,
@@ -193,7 +200,7 @@ const port = parseInt(process.env.PORT ?? "8000", 10);
 // Bind to loopback only: the /run endpoint can read journey files from disk,
 // so we don't want to expose it to other hosts on the network.
 const hostname = "127.0.0.1";
-Deno.serve({ port, hostname }, async (req: Request) => {
+const handler = async (req: Request): Promise<Response> => {
   const url = new URL(req.url);
 
   if (url.pathname === "/" && req.method === "GET") {
@@ -326,7 +333,7 @@ Deno.serve({ port, hostname }, async (req: Request) => {
 
     // IMPORTANT: do NOT await writer.write() before returning Response.
     // TransformStream's writer.write() doesn't resolve until the readable
-    // side is being drained, and Deno.serve only flushes Response headers
+    // side is being drained, and the server only flushes Response headers
     // to the client once the handler returns. Awaiting here would deadlock
     // — the client never sees headers, never starts reading, the writes
     // never complete. Push the initial events onto the queue (sync), then
@@ -541,4 +548,6 @@ Deno.serve({ port, hostname }, async (req: Request) => {
   }
 
   return new Response("Not found", { status: 404 });
-});
+};
+
+serve({ fetch: handler, port, hostname });

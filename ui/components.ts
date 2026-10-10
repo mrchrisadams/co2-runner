@@ -2,11 +2,11 @@
 // Renders a small dark-themed app that listens to the SSE stream of
 // results + progress + install-status events.
 //
-// The dashboard JavaScript is read as a raw text string at module-load
-// time and inlined into the HTML response, so the page works from a
-// single document in packaged builds where sibling static files aren't
-// shipped. Node (unlike Deno) has no `import ... with { type: "text" }`
-// for raw-text modules, so the file is read relative to this module.
+// The dashboard JavaScript is read from disk at module-load time (relative
+// to this module) and inlined into the HTML response; Node has no
+// `import ... with { type: "text" }` for raw-text modules. Because the file
+// is read from disk, packaged SEA/Electron builds must embed it — Phase 5
+// does this via an esbuild text loader.
 
 import { readTextFile } from "../util/fsx.ts";
 

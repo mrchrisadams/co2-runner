@@ -73,6 +73,9 @@ export class Command {
   ): ChildProcess {
     return nodeSpawn(this.#cmd, this.#opts.args ?? [], {
       cwd: this.#opts.cwd,
+      // NOTE: this MERGES env over the parent env (the previous runtime's
+      // Command REPLACED the environment when env was given) — callers must
+      // blank keys explicitly if they need isolation.
       env: this.#opts.env ? { ...process.env, ...this.#opts.env } : process.env,
       stdio: ["ignore", stdout, stderr],
     });
