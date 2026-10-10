@@ -2,7 +2,10 @@
 
 ## Status
 
-Accepted
+Superseded by [ADR-006](adr-006-migrate-runtime-to-node.md) — the project no
+longer runs on Deno, and the bundled-CLI workaround (plus
+`scripts/bundle-deno.ts` and `util/deno-bin.ts`) was deleted in the Node
+migration.
 
 ## Context
 
