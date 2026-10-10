@@ -1,24 +1,17 @@
 name: build
 
-# Transitional CI for the stacked migration (part 1 of 3, see PR #3): the
-# runtime is Node-based (package.json/node_modules exist) but the test suite
-# still runs on `deno test` until part 2 lands, and the CLI/DMG build jobs
-# return in part 3 (Node SEA + electron-builder — `deno compile` cannot build
-# this hybrid tree).
 on:
   push:
     branches: [main]
     tags: ["v*", "2026*"]
   pull_request:
+    branches: [main]
 
 jobs:
   test:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: denoland/setup-deno@v2
-        with:
-          deno-version: 2.9.5
       - uses: actions/setup-node@v4
         with:
           node-version: 22
@@ -26,9 +19,82 @@ jobs:
       - run: npm ci
       - name: Install Playwright Firefox for tests
         run: npx playwright install firefox
-      - run: deno --version
-      - run: deno fmt --check
-      - run: deno lint
-      - run: deno check .
+      - name: Typecheck
+        run: npm run check
       - name: Run tests (headless runner via xvfb)
-        run: xvfb-run -a deno test --allow-all
+        run: xvfb-run -a npm test
+
+  build-cli:
+    needs: test
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-14
+            artifact: co2-runner-aarch64-apple-darwin
+          - os: ubuntu-22.04
+            artifact: co2-runner-x86_64-unknown-linux-gnu
+          - os: windows-latest
+            artifact: co2-runner-x86_64-pc-windows-msvc.exe
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Build CLI binary (Node SEA)
+        run: npm run compile
+      - name: Smoke-test --help (unix)
+        if: runner.os != 'Windows'
+        run: ./dist/${{ matrix.artifact }} --help
+      - name: Smoke-test --help (windows)
+        if: runner.os == 'Windows'
+        run: ./dist/${{ matrix.artifact }} --help
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact }}
+          path: dist/${{ matrix.artifact }}
+          if-no-files-found: error
+
+  build-desktop:
+    needs: test
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Build desktop app (Electron, aarch64 dmg)
+        run: npm run desktop
+      - name: Verify DMG exists
+        run: test -f dist/CO2Runner.dmg
+      - name: Upload DMG artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: CO2Runner-aarch64-apple-darwin.dmg
+          path: dist/CO2Runner.dmg
+          if-no-files-found: error
+
+  release:
+    if: startsWith(github.ref, 'refs/tags/v') || startsWith(github.ref, 'refs/tags/2026')
+    needs: [build-cli, build-desktop]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+          merge-multiple: true
+      - name: List artifacts
+        run: ls -lh artifacts
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: artifacts/*
+          generate_release_notes: true
+          fail_on_unmatched_files: true

@@ -29,6 +29,7 @@
 // under tsx. Grid-intensity data is inlined by esbuild's JSON loader via the
 // plain import in runner/co2.ts.
 
+import { createRequire } from "node:module";
 import { spawnSync } from "node:child_process";
 import {
   copyFileSync,
@@ -198,9 +199,16 @@ if (process.platform === "darwin") {
 
 run(process.execPath, ["--experimental-sea-config", seaConfigPath]);
 
+// Resolve postject's JS entry (not the node_modules/.bin shim — that is a
+// POSIX shell script, which Windows cannot exec).
+const postjectCli = createRequire(import.meta.url).resolve(
+  "postject/dist/cli.js",
+);
+
 run(
-  join(root, "node_modules", ".bin", "postject"),
+  process.execPath,
   [
+    postjectCli,
     binPath,
     "NODE_SEA_BLOB",
     blobPath,
