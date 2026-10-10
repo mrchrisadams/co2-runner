@@ -8,8 +8,8 @@ import {
   chmod as nodeChmod,
   mkdir as nodeMkdir,
   mkdtemp,
-  readFile as nodeReadFile,
   readdir,
+  readFile as nodeReadFile,
   realpath,
   rm,
   stat as nodeStat,
@@ -68,7 +68,9 @@ export async function makeTempFile(
   return file;
 }
 
-export async function makeTempDir(options?: { prefix?: string }): Promise<string> {
+export async function makeTempDir(
+  options?: { prefix?: string },
+): Promise<string> {
   return await mkdtemp(join(tmpdir(), options?.prefix ?? "co2-runner-"));
 }
 
@@ -80,8 +82,12 @@ export async function chmod(path: string, mode: number): Promise<void> {
   await nodeChmod(path, mode);
 }
 
-export async function symlink(target: string, path: string): Promise<void> {
-  await nodeSymlink(target, path);
+export async function symlink(
+  target: string,
+  path: string,
+  type?: "dir" | "file" | "junction",
+): Promise<void> {
+  await nodeSymlink(target, path, type);
 }
 
 export async function readDir(

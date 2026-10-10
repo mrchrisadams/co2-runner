@@ -52,7 +52,7 @@ function toWeb(stream: Readable | null): ReadableStream<Uint8Array> {
 }
 
 function stdioFor(mode: StreamMode | undefined): "pipe" | "inherit" | "ignore" {
-  if (mode === "inherit") return "inherit";
+  if (mode === "piped") return "pipe";
   if (mode === "null") return "ignore";
   // Command defaults stdout/stderr to "inherit".
   return "inherit";
@@ -73,9 +73,7 @@ export class Command {
   ): ChildProcess {
     return nodeSpawn(this.#cmd, this.#opts.args ?? [], {
       cwd: this.#opts.cwd,
-      env: this.#opts.env
-        ? { ...process.env, ...this.#opts.env }
-        : process.env,
+      env: this.#opts.env ? { ...process.env, ...this.#opts.env } : process.env,
       stdio: ["ignore", stdout, stderr],
     });
   }

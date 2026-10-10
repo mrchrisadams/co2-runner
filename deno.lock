@@ -57,6 +57,19 @@
       "npm:@playwright/test@^1.45.0",
       "npm:playwright@^1.45.0",
       "npm:yaml@^2.4.0"
-    ]
+    ],
+    "packageJson": {
+      "dependencies": [
+        "npm:@hono/node-server@1",
+        "npm:@playwright/test@^1.45.0",
+        "npm:@types/node@22",
+        "npm:esbuild@0.25",
+        "npm:hono@4",
+        "npm:playwright@^1.45.0",
+        "npm:tsx@4",
+        "npm:typescript@5",
+        "npm:yaml@2"
+      ]
+    }
   }
 }

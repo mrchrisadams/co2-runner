@@ -18,10 +18,16 @@
 import { extname } from "node:path";
 import { parseEnergyProfile } from "./energy.ts";
 import { artefactsDir } from "../ui/paths.ts";
-import { DenoNotFoundError, findDenoBinary } from "../util/deno-bin.ts";
+import { playwrightCliPaths } from "../util/playwright-cli.ts";
 import { Command } from "../util/spawn.ts";
 import { env } from "../util/platform.ts";
-import { mkdir, realPath, remove, writeTextFile } from "../util/fsx.ts";
+import {
+  mkdir,
+  realPath,
+  remove,
+  symlink,
+  writeTextFile,
+} from "../util/fsx.ts";
 import type { ResultsStore } from "../ui/results.ts";
 import type { JourneyResult } from "../types.ts";
 
@@ -52,20 +58,15 @@ export async function countTests(
   scriptPath: string,
   configPath: string,
 ): Promise<number> {
-  // Resolve the deno CLI binary; throws DenoNotFoundError if absent.
-  const denoBin = await findDenoBinary();
-  if (!denoBin) throw new DenoNotFoundError();
+  const { test: playwrightCli } = await playwrightCliPaths();
 
   // cwd = artefacts dir (the parent of the generated playwright.config.ts).
   // Not strictly necessary for `--list` (which doesn't run tests), but
   // keeps the spawn contract uniform with the actual test-run spawn below.
-  const cmd = new Command(denoBin, {
+  const cmd = new Command(process.execPath, {
     cwd: artefactsDir(),
     args: [
-      "run",
-      "-A",
-      "--allow-scripts=npm:playwright",
-      "npm:@playwright/test",
+      playwrightCli,
       "test",
       "--list",
       "--config",
@@ -106,6 +107,27 @@ async function readAll(stream: ReadableStream<Uint8Array>): Promise<string> {
     buf += dec.decode(value, { stream: true });
   }
   return buf;
+}
+
+/**
+ * The generated playwright.config.ts — and any .spec.js living in the
+ * artefacts tree — import "@playwright/test" bare. Node resolves those by
+ * walking node_modules up from each file's location, and the per-user
+ * artefacts dir under $HOME has none. Link the node_modules the CLI
+ * entries resolved from into the artefacts dir so the spawned
+ * `playwright test` subprocess can resolve them. Recreated on every run
+ * so it self-heals if the app (and its node_modules) moves.
+ */
+async function linkNodeModulesIntoArtefactsDir(
+  dir: string,
+  nodeModules: string,
+): Promise<void> {
+  const linkPath = `${dir}/node_modules`;
+  await remove(linkPath).catch(() => {});
+  await symlink(nodeModules, linkPath, "junction").catch((err) => {
+    if ((err as NodeJS.ErrnoException).code === "EEXIST") return;
+    throw err;
+  });
 }
 
 /**
@@ -179,6 +201,9 @@ export async function runScript(
   const ARTEFACTS_DIR = artefactsDir();
   await mkdir(ARTEFACTS_DIR, { recursive: true });
 
+  const { nodeModules } = await playwrightCliPaths();
+  await linkNodeModulesIntoArtefactsDir(ARTEFACTS_DIR, nodeModules);
+
   // Resolve to an absolute path. Playwright resolves testDir relative to
   // the config file's location (which lives in ARTEFACTS_DIR, NOT the
   // caller's cwd), so relative script paths break otherwise.
@@ -237,8 +262,7 @@ export async function runScript(
       message: "launching Firefox + running journey script...",
     });
 
-    const denoBin = await findDenoBinary();
-    if (!denoBin) throw new DenoNotFoundError();
+    const { test: playwrightCli } = await playwrightCliPaths();
 
     // Run the subprocess with cwd = ARTEFACTS_DIR. Without this, the
     // subprocess inherits the parent's cwd, which when the desktop app
@@ -246,13 +270,10 @@ export async function runScript(
     // @playwright/test tries to mkdir `test-results/` in its cwd and
     // crashes with `EROFS: read-only file system, mkdir '/test-results/...'`.
     // The artefacts dir is one we own + create, so it's always writable.
-    const cmd = new Command(denoBin, {
+    const cmd = new Command(process.execPath, {
       cwd: ARTEFACTS_DIR,
       args: [
-        "run",
-        "-A",
-        "--allow-scripts=npm:playwright",
-        "npm:@playwright/test",
+        playwrightCli,
         "test",
         "--config",
         CONFIG_PATH,

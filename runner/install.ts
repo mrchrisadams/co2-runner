@@ -1,10 +1,14 @@
 // runner/install.ts — first-run browser install.
 // Playwright's bundled Firefox is ~120-200MB and cannot be embedded
-// inside a `deno compile` binary, so users install it on first run.
+// inside the packaged binary (SEA / Electron), so users install it on
+// first run.
 
 import { firefox } from "playwright";
 import { exists } from "../util/exists.ts";
-import { DenoNotFoundError, findDenoBinary } from "../util/deno-bin.ts";
+import {
+  type PlaywrightCliPaths,
+  playwrightCliPaths,
+} from "../util/playwright-cli.ts";
 import { Command } from "../util/spawn.ts";
 
 export interface InstallProgress {
@@ -32,8 +36,8 @@ export async function isFirefoxInstalled(): Promise<boolean> {
  * Install Playwright's bundled Firefox, streaming progress events to the
  * caller (used by the HTTP /install endpoint to push to the SSE stream).
  *
- * Spawns `deno run --allow-all npm:playwright install firefox` and parses
- * its stdout for download progress lines.
+ * Spawns `node <playwright>/cli.js install firefox` and parses its stdout
+ * for download progress lines.
  */
 export async function installBrowsersWithProgress(
   onProgress?: ProgressCb,
@@ -45,25 +49,19 @@ export async function installBrowsersWithProgress(
     message: "Installing Playwright's bundled Firefox...",
   });
 
-  // Resolve the deno CLI binary. Compiled desktop binaries launch with a
-  // minimal PATH (Finder doesn't include ~/.deno/bin), so we search
-  // well-known locations first. Without this, spawning `deno` throws
-  // "entity not found" when run from the desktop app.
-  const denoBin = await findDenoBinary();
-  if (!denoBin) {
-    emit({ phase: "error", message: new DenoNotFoundError().message });
-    throw new DenoNotFoundError();
+  // Resolve Playwright's CLI entry. The node binary is always present
+  // (process.execPath is the runtime we're executing in), so unlike the
+  // old deno-binary hunt there is no PATH searching to fail here.
+  let cliPaths: PlaywrightCliPaths;
+  try {
+    cliPaths = await playwrightCliPaths();
+  } catch (err) {
+    emit({ phase: "error", message: (err as Error).message });
+    throw err;
   }
 
-  const cmd = new Command(denoBin, {
-    args: [
-      "run",
-      "--allow-all",
-      "--allow-scripts=npm:playwright",
-      "npm:playwright",
-      "install",
-      "firefox",
-    ],
+  const cmd = new Command(process.execPath, {
+    args: [cliPaths.install, "install", "firefox"],
     stdout: "piped",
     stderr: "piped",
   });

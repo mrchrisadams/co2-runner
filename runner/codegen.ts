@@ -14,7 +14,7 @@
 // can't see.
 
 import type { CodegenProgress } from "../types.ts";
-import { DenoNotFoundError, findDenoBinary } from "../util/deno-bin.ts";
+import { playwrightCliPaths } from "../util/playwright-cli.ts";
 import { Command } from "../util/spawn.ts";
 import { env, os } from "../util/platform.ts";
 
@@ -109,20 +109,11 @@ export async function launchCodegen(
     message: `Launching Playwright codegen for ${startUrl}...`,
   });
 
-  // Resolve the deno CLI binary. Compiled desktop binaries don't include
-  // `deno` on PATH (Finder launches apps with a minimal PATH that
-  // doesn't include ~/.deno/bin). Look in well-known locations first.
-  const denoBin = await findDenoBinary();
-  if (!denoBin) {
-    throw new DenoNotFoundError();
-  }
+  const { codegen: playwrightCli } = await playwrightCliPaths();
 
-  const cmd = new Command(denoBin, {
+  const cmd = new Command(process.execPath, {
     args: [
-      "run",
-      "-A",
-      "--allow-scripts=npm:playwright",
-      "npm:playwright",
+      playwrightCli,
       "codegen",
       "--browser=firefox",
       "--target=playwright-test",
