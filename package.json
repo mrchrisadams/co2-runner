@@ -29,7 +29,7 @@
     "install-browsers": "tsx main.ts install",
     "run": "tsx main.ts run journeys/example.yaml",
     "desktop:dev": "electron electron/main.cjs",
-    "desktop": "electron-builder --mac",
+    "desktop": "electron-builder --mac --publish never",
     "check": "tsc --noEmit",
     "test": "tsx --test --test-concurrency=1 --test-force-exit tests/integration/*.ts tests/runner/*.ts tests/ui/*.ts tests/util/*.ts",
     "compile": "node scripts/build-cli.mjs"

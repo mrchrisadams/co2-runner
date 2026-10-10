@@ -55,7 +55,7 @@ mkdirSync(dist, { recursive: true });
 const tlaEntryPlugin = {
   name: "co2-runner:wrap-entry-tla",
   setup(build) {
-    build.onLoad({ filter: /(^|\/)main\.ts$/ }, (args) => {
+    build.onLoad({ filter: /(^|[\\/])main\.ts$/ }, (args) => {
       const lines = readFileSync(args.path, "utf8").split("\n");
       const imports = [];
       let i = 0;
