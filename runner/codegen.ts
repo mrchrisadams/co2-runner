@@ -15,6 +15,8 @@
 
 import type { CodegenProgress } from "../types.ts";
 import { DenoNotFoundError, findDenoBinary } from "../util/deno-bin.ts";
+import { Command } from "../util/spawn.ts";
+import { env, os } from "../util/platform.ts";
 
 export interface CodegenOptions {
   /** URL to navigate to when the Inspector opens. */
@@ -42,11 +44,11 @@ export interface CodegenResult {
  * segfault deep in the webview backend.
  */
 export function hasGraphicalDisplay(): boolean {
-  const plat = Deno.build.os;
+  const plat = os();
   if (plat === "darwin" || plat === "windows") return true;
   // Linux: check both X11 ($DISPLAY) and Wayland ($WAYLAND_DISPLAY).
-  if (Deno.env.get("DISPLAY")) return true;
-  if (Deno.env.get("WAYLAND_DISPLAY")) return true;
+  if (process.env.DISPLAY) return true;
+  if (process.env.WAYLAND_DISPLAY) return true;
   return false;
 }
 
@@ -115,7 +117,7 @@ export async function launchCodegen(
     throw new DenoNotFoundError();
   }
 
-  const cmd = new Deno.Command(denoBin, {
+  const cmd = new Command(denoBin, {
     args: [
       "run",
       "-A",
@@ -130,7 +132,7 @@ export async function launchCodegen(
     stdout: "piped",
     stderr: "piped",
     env: {
-      ...Deno.env.toObject(),
+      ...env(),
       // Playwright codegen should NOT spin up the Mozilla Profiler —
       // we're only recording a journey, not measuring energy. Explicitly
       // unset any MOZ_PROFILER_* vars the parent process might have set

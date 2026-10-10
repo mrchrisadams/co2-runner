@@ -2,7 +2,7 @@
 //
 // Compiled `deno compile` and `deno desktop` binaries embed the Deno
 // runtime as a dylib/binary blob; the running process is NOT a deno
-// CLI executable. Calling `new Deno.Command("deno", ...)` from inside
+// CLI executable. Calling `new Command("deno", ...)` from inside
 // a compiled binary fails with "entity not found" if the user's PATH
 // doesn't include a real `deno` install (e.g. when the app is launched
 // via Finder, whose PATH is just /usr/bin:/bin).
@@ -13,6 +13,7 @@
 // so a self-contained .dmg with the bundled deno works zero-setup.
 
 import { exists } from "./exists.ts";
+import { Command } from "./spawn.ts";
 
 /**
  * Absolute path to the bundled deno binary inside the .app bundle.
@@ -24,7 +25,7 @@ import { exists } from "./exists.ts";
  * bundled deno lives at .../CO2Runner.app/Contents/Resources/deno/deno.
  */
 export function bundledDenoPath(): string | null {
-  const execPath = Deno.execPath();
+  const execPath = process.execPath;
   const macosIdx = execPath.lastIndexOf("/MacOS/");
   if (macosIdx === -1) return null;
   const contentsDir = execPath.substring(0, macosIdx);
@@ -33,7 +34,7 @@ export function bundledDenoPath(): string | null {
 
 /** Candidates, in priority order. First existing file is returned. */
 export function denoBinaryCandidates(): string[] {
-  const home = Deno.env.get("HOME") ?? Deno.env.get("USERPROFILE") ?? "";
+  const home = process.env.HOME ?? process.env.USERPROFILE ?? "";
   const candidates: string[] = [];
 
   // 1. Bundled deno inside the desktop app bundle (Contents/Resources/deno/deno).
@@ -43,7 +44,7 @@ export function denoBinaryCandidates(): string[] {
 
   // 2. DENO_BIN env var — explicit user override (devs testing a custom
   //    deno build, or pointing at a side-installed binary).
-  const env = Deno.env.get("DENO_BIN");
+  const env = process.env.DENO_BIN;
   if (env) candidates.push(env);
 
   // 3. ~/.deno/bin/deno — the default install location for
@@ -81,7 +82,7 @@ export async function findDenoBinary(): Promise<string | null> {
     if (candidate === "deno") {
       // Bare PATH lookup — verify by spawning `deno --version`.
       try {
-        const cmd = new Deno.Command(candidate, { args: ["--version"] });
+        const cmd = new Command(candidate, { args: ["--version"] });
         const child = cmd.spawn();
         const status = await child.status;
         if (status.success) {
@@ -97,7 +98,7 @@ export async function findDenoBinary(): Promise<string | null> {
     if (await exists(candidate)) {
       // Verify it's actually executable (not a stale symlink).
       try {
-        const cmd = new Deno.Command(candidate, { args: ["--version"] });
+        const cmd = new Command(candidate, { args: ["--version"] });
         const child = cmd.spawn();
         const status = await child.status;
         if (status.success) {

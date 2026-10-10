@@ -12,6 +12,8 @@ import { parse as parseYaml } from "yaml";
 import { parseEnergyProfile } from "./energy.ts";
 import { isScriptFile, runScript } from "./run-script.ts";
 import { artefactsDir } from "../ui/paths.ts";
+import { env } from "../util/platform.ts";
+import { mkdir, readTextFile } from "../util/fsx.ts";
 import type { ResultsStore } from "../ui/results.ts";
 import type { JourneyConfig, JourneyResult, PageLike, Step } from "../types.ts";
 
@@ -50,7 +52,7 @@ export async function runJourney(
     return runScript(journeyPath, store, opts);
   }
 
-  const raw = await Deno.readTextFile(journeyPath);
+  const raw = await readTextFile(journeyPath);
   const config = validateConfig(parseYaml(raw), journeyPath);
 
   if (config.browser && config.browser !== "firefox") {
@@ -66,7 +68,7 @@ export async function runJourney(
   }
 
   const ARTEFACTS_DIR = artefactsDir();
-  await Deno.mkdir(ARTEFACTS_DIR, { recursive: true });
+  await mkdir(ARTEFACTS_DIR, { recursive: true });
   const slug = slugify(config.name);
   const PROFILE_PATH = `${ARTEFACTS_DIR}/${slug}-profile.json`;
   const HAR_PATH = `${ARTEFACTS_DIR}/${slug}.har`;
@@ -86,7 +88,7 @@ export async function runJourney(
       }
       : undefined,
     env: {
-      ...Deno.env.toObject(),
+      ...env(),
       MOZ_PROFILER_STARTUP: "1",
       MOZ_PROFILER_STARTUP_ENTRIES: "10000000",
       MOZ_PROFILER_STARTUP_INTERVAL: "10",

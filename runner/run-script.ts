@@ -15,10 +15,13 @@
 // profile to <artefacts-dir>/<slug>-profile.json on shutdown. The existing
 // parseEnergyProfile() sums the power counters.
 
-import { extname } from "path";
+import { extname } from "node:path";
 import { parseEnergyProfile } from "./energy.ts";
 import { artefactsDir } from "../ui/paths.ts";
 import { DenoNotFoundError, findDenoBinary } from "../util/deno-bin.ts";
+import { Command } from "../util/spawn.ts";
+import { env } from "../util/platform.ts";
+import { mkdir, realPath, remove, writeTextFile } from "../util/fsx.ts";
 import type { ResultsStore } from "../ui/results.ts";
 import type { JourneyResult } from "../types.ts";
 
@@ -56,7 +59,7 @@ export async function countTests(
   // cwd = artefacts dir (the parent of the generated playwright.config.ts).
   // Not strictly necessary for `--list` (which doesn't run tests), but
   // keeps the spawn contract uniform with the actual test-run spawn below.
-  const cmd = new Deno.Command(denoBin, {
+  const cmd = new Command(denoBin, {
     cwd: artefactsDir(),
     args: [
       "run",
@@ -174,12 +177,12 @@ export async function runScript(
   opts?: { displayName?: string; slowMo?: boolean; filmReel?: boolean },
 ): Promise<JourneyResult> {
   const ARTEFACTS_DIR = artefactsDir();
-  await Deno.mkdir(ARTEFACTS_DIR, { recursive: true });
+  await mkdir(ARTEFACTS_DIR, { recursive: true });
 
   // Resolve to an absolute path. Playwright resolves testDir relative to
   // the config file's location (which lives in ARTEFACTS_DIR, NOT the
   // caller's cwd), so relative script paths break otherwise.
-  const absScriptPath = await Deno.realPath(scriptPath);
+  const absScriptPath = await realPath(scriptPath);
 
   // Derive a display name + slug from the script's basename (minus extension).
   // The caller can override the display name (e.g. when the temp file has a
@@ -199,7 +202,7 @@ export async function runScript(
     slowMo: opts?.slowMo,
     filmReel: opts?.filmReel,
   });
-  await Deno.writeTextFile(CONFIG_PATH, configContents);
+  await writeTextFile(CONFIG_PATH, configContents);
 
   try {
     // ── Validate: single test only ────────────────────────────────────────
@@ -243,7 +246,7 @@ export async function runScript(
     // @playwright/test tries to mkdir `test-results/` in its cwd and
     // crashes with `EROFS: read-only file system, mkdir '/test-results/...'`.
     // The artefacts dir is one we own + create, so it's always writable.
-    const cmd = new Deno.Command(denoBin, {
+    const cmd = new Command(denoBin, {
       cwd: ARTEFACTS_DIR,
       args: [
         "run",
@@ -256,7 +259,7 @@ export async function runScript(
         "--reporter=line",
       ],
       env: {
-        ...Deno.env.toObject(),
+        ...env(),
         MOZ_PROFILER_STARTUP: "1",
         MOZ_PROFILER_STARTUP_ENTRIES: "10000000",
         MOZ_PROFILER_STARTUP_INTERVAL: "10",
@@ -319,6 +322,6 @@ export async function runScript(
   } finally {
     // Clean up the generated playwright.config.ts (artefacts like the
     // profile + HAR stay — those are the user's deliverables).
-    await Deno.remove(CONFIG_PATH).catch(() => {});
+    await remove(CONFIG_PATH).catch(() => {});
   }
 }

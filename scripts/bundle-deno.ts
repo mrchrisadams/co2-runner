@@ -14,6 +14,19 @@
 // the script (Deno.version.deno).
 
 import { exists } from "../util/exists.ts";
+import { Command } from "../util/spawn.ts";
+import { os } from "../util/platform.ts";
+import {
+  chmod,
+  makeTempDir,
+  makeTempFile,
+  mkdir,
+  readDir,
+  remove,
+  stat,
+  symlink,
+  writeFile,
+} from "../util/fsx.ts";
 
 interface Platform {
   /** Target triple, e.g. `aarch64-apple-darwin`. */
@@ -25,7 +38,7 @@ interface Platform {
 }
 
 function detectPlatform(): Platform {
-  const plat = Deno.build.os;
+  const plat = os();
   const arch = Deno.build.arch;
   if (plat === "darwin") {
     return {
@@ -60,7 +73,7 @@ const APPLE_APP_BUNDLE_DENO_PATH = "Contents/Resources/deno/deno";
  * to find the sibling Resources/ directory.
  */
 export function bundledDenoPath(): string | null {
-  const execPath = Deno.execPath();
+  const execPath = process.execPath;
   // Walk up: .../Contents/MacOS/laufey_webview → .../Contents
   const macosIdx = execPath.lastIndexOf("/MacOS/");
   if (macosIdx === -1) return null; // not running from inside a .app bundle
@@ -96,15 +109,15 @@ async function downloadDeno(
   );
 
   // Write the zip to a temp file, then unzip.
-  const tmpZip = await Deno.makeTempFile({ suffix: ".zip" });
+  const tmpZip = await makeTempFile({ suffix: ".zip" });
   try {
-    await Deno.writeFile(tmpZip, zipBytes);
-    await Deno.mkdir(destDir, { recursive: true });
+    await writeFile(tmpZip, zipBytes);
+    await mkdir(destDir, { recursive: true });
 
     // Use the system `unzip` command — robust + cross-version, and
     // we already have it via Deno.Command. Deno doesn't have a built-in
     // unzip in the stdlib yet (deno_zip is JSR-experimental).
-    const cmd = new Deno.Command("unzip", {
+    const cmd = new Command("unzip", {
       args: ["-o", tmpZip, "-d", destDir],
       stdout: "inherit",
       stderr: "inherit",
@@ -121,10 +134,10 @@ async function downloadDeno(
     if (!await exists(denoPath)) {
       return { ok: false, message: `unzip didn't produce ${denoPath}` };
     }
-    await Deno.chmod(denoPath, 0o755);
+    await chmod(denoPath, 0o755);
     return { ok: true, message: denoPath };
   } finally {
-    await Deno.remove(tmpZip).catch(() => {});
+    await remove(tmpZip).catch(() => {});
   }
 }
 
@@ -135,7 +148,7 @@ async function codesignAdhoc(appPath: string): Promise<void> {
   // the bundled resources have changed since the original signature
   // was computed by `deno desktop`.
   console.log(`✎ Re-codesigning ${appPath} (ad-hoc, deep)...`);
-  const cmd = new Deno.Command("codesign", {
+  const cmd = new Command("codesign", {
     args: ["--force", "--sign", "-", "--deep", appPath],
     stdout: "inherit",
     stderr: "inherit",
@@ -159,17 +172,17 @@ async function codesignAdhoc(appPath: string): Promise<void> {
  */
 async function regenerateDmg(appPath: string): Promise<string> {
   const dmgPath = appPath.replace(/\.app$/, ".dmg");
-  const stagingDir = await Deno.makeTempDir();
+  const stagingDir = await makeTempDir();
 
   try {
     // Symlink to /Applications so the DMG opens with a drag-to-Install
     // shortcut alongside the app icon.
-    await Deno.symlink("/Applications", `${stagingDir}/Applications`);
+    await symlink("/Applications", `${stagingDir}/Applications`);
     // Copy the freshly-signed .app into staging.
     await copyDir(appPath, `${stagingDir}/${basename(appPath)}`);
 
     console.log(`📦 Regenerating ${dmgPath}...`);
-    const cmd = new Deno.Command("hdiutil", {
+    const cmd = new Command("hdiutil", {
       args: [
         "create",
         "-volname",
@@ -191,14 +204,14 @@ async function regenerateDmg(appPath: string): Promise<string> {
     console.log("  ✓ DMG regenerated");
     return dmgPath;
   } finally {
-    await Deno.remove(stagingDir, { recursive: true }).catch(() => {});
+    await remove(stagingDir, { recursive: true }).catch(() => {});
   }
 }
 
 async function copyDir(src: string, dest: string): Promise<void> {
   // Use `cp -R` rather than re-implementing recursive copy: it preserves
   // symlinks, permissions, and xattrs (including codesign signatures).
-  const cmd = new Deno.Command("cp", {
+  const cmd = new Command("cp", {
     args: ["-R", src, dest],
     stdout: "inherit",
     stderr: "inherit",
@@ -215,29 +228,30 @@ function basename(path: string): string {
 }
 
 async function main() {
-  const version = Deno.args[0] ?? Deno.version.deno;
+  const cliArgs = process.argv.slice(2);
+  const version = cliArgs[0] ?? Deno.version.deno;
   if (!version) {
     console.error(
       "no Deno version provided and Deno.version.deno is empty — pass an explicit version",
     );
-    Deno.exit(1);
+    process.exit(1);
   }
 
-  const appPath = Deno.args[1] ?? "dist/CO2Runner.app";
+  const appPath = cliArgs[1] ?? "dist/CO2Runner.app";
   if (!await exists(appPath)) {
     console.error(
       `app bundle not found at ${appPath}. Run \`deno task desktop\` (without the trailing bundle step) first.`,
     );
-    Deno.exit(1);
+    process.exit(1);
   }
 
   const platform = detectPlatform();
   if (!platform.isMacos) {
     console.error(
-      `bundling Deno into a .app is macOS-only; this machine is ${Deno.build.os}. ` +
+      `bundling Deno into a .app is macOS-only; this machine is ${os()}. ` +
         `For Linux/Windows, ship the standalone deno binary alongside the app and set DENO_BIN.`,
     );
-    Deno.exit(1);
+    process.exit(1);
   }
 
   // destDir is .../Contents/Resources/deno
@@ -250,7 +264,7 @@ async function main() {
   const result = await downloadDeno(version, platform, destDir);
   if (!result.ok) {
     console.error(`✗ ${result.message}`);
-    Deno.exit(1);
+    process.exit(1);
   }
   console.log(`  ✓ deno binary placed at ${result.message}`);
 
@@ -262,9 +276,9 @@ async function main() {
   const dmgPath = await regenerateDmg(appPath);
 
   // Report final sizes.
-  const sizeDeno = (await Deno.stat(result.message)).size;
+  const sizeDeno = (await stat(result.message)).size;
   const sizeApp = await totalDirSize(appPath);
-  const sizeDmg = (await Deno.stat(dmgPath)).size;
+  const sizeDmg = (await stat(dmgPath)).size;
   console.log(
     `\n✅ Bundled Deno ${version} into ${appPath} (${
       (sizeDeno / 1024 / 1024).toFixed(1)
@@ -279,12 +293,12 @@ async function main() {
 async function totalDirSize(path: string): Promise<number> {
   let total = 0;
   const walk = async (p: string) => {
-    for await (const entry of Deno.readDir(p)) {
+    for (const entry of await readDir(p)) {
       const full = `${p}/${entry.name}`;
       if (entry.isDirectory) {
         await walk(full);
       } else if (entry.isFile) {
-        const s = await Deno.stat(full);
+        const s = await stat(full);
         total += s.size;
       }
     }
