@@ -261,6 +261,22 @@ Mitigations, now mandatory:
      `message=asking … permission=bash` line followed by dead air until cancel.
      (Contrast with incident 1: an LLM `stream` line followed by dead air =
      provider hang.)
+7. **Snapshot before forget (post-incident 3, 2026-10-10)** — the Phase 2
+   agent's completed work was LOST: the orchestrator ran the test suite (a
+   non-jj command, no snapshot), then `jj workspace forget p2` + `rm -rf`
+   without ever running `jj -R ../co2-runner-p2 st`. `jj workspace
+   forget`
+   does NOT snapshot unsnapshotted working-copy changes; the only copy of the
+   agent's edits was the workspace directory. Rules:
+   - The lifecycle's step 3 (`jj -R ../co2-runner-p<N> st`) is MANDATORY and
+     must be the first command run after any subagent completes, BEFORE any test
+     run (test runs are not jj commands and snapshot nothing), and ALWAYS before
+     `workspace forget`.
+   - Before forgetting a workspace, verify its change is non-empty when it
+     should be: `jj -R <ws> show --stat | tail -1` must not read "0 files
+     changed".
+   - The code-reviewer gate caught this (empty Phase 2 change in the diff).
+     Phase 2 was re-delegated from scratch.
 
 ### Execution status (2026-10-10)
 
@@ -270,14 +286,48 @@ Mitigations, now mandatory:
   all `Deno.*` migrated except `Deno.serve` (Phase 2) and the two files slated
   for deletion (`util/deno-bin.ts`, `scripts/bundle-deno.ts`). Verified:
   `npx tsc --noEmit` ✓, `deno check .` ✓.
-- **One known failing test** (`runJourney dispatches .spec.js…`): root cause
-  diagnosed — the new repo-root `package.json`/`node_modules` changes how the
-  bare `@playwright/test` import inside `journeys/example.spec.js` resolves when
-  Playwright is spawned via `deno run npm:@playwright/test` (node resolution now
-  stops at the repo's own `node_modules` and breaks under the Deno-run
-  pipeline). The spawn shim is NOT at fault (reproduced with the raw command).
-  **Fix = Phase 3** (run Playwright via `node` against
-  `node_modules/playwright`), so Phase 3 executes next, before Phase 2.
+- **Phase 3 complete and integrated** ("Phase 3: Run Playwright subprocesses via
+  Node"): `util/playwright-cli.ts`, 4 spawn sites on `node <playwright-cli>`,
+  fixed the `spawn.ts` `stdioFor` "piped"→"pipe" bug, `ui/components.ts`
+  import-attribute fix. The previously failing `runJourney dispatches` test
+  passes; full suite 88/88 green; YAML journey runs under tsx with non-zero mWh.
+- **Phase 2 LOST and re-delegated** (incident 3 above). First attempt's agent
+  report (for the re-run's benefit): Hono
+  `serve({ fetch: handler,
+  port, hostname })` port, all routes byte-identical;
+  SSE verified live via curl (headers immediate, events unbuffered);
+  `CO2_RUNNER_DESKTOP_ADDRESS` as primary with `DENO_SERVE_ADDRESS` legacy
+  fallback (deno desktop and `tests/integration/desktop_launch_test.ts` still
+  set the old var — the fallback must exist); `runner/co2.ts` keeps
+  `with { type: "json" }` until Phase 4 (the Deno runtime rejects plain JSON
+  imports and integration tests spawn `deno run main.ts serve`).
+
+### Wave 1 review: deferred findings (fix in later phases, do not re-open Wave 1)
+
+From the Wave 1 code review (2026-10-10), beyond the blocking items that were
+fixed by the Phase 2 re-run:
+
+- **ui/components.ts packaged-build regression (finding 5)**: the dashboard is
+  read from disk at module load (`new URL("./dashboard.js",
+  import.meta.url)`)
+  — breaks in SEA/Electron builds. Phase 5 must embed it (esbuild text loader or
+  similar). Fix the misleading comment in Phase 2.
+- **spawn shim latent drift (findings 6–8)**: env merge-vs-replace semantics
+  (Deno replaces, shim merges over parent env), stdin `"ignore"` vs Deno
+  `"inherit"`, status resolves on `close` not `exit`, `signal` field dropped. No
+  current call site affected; document in shim header or address in Phase 5
+  hardening.
+- **`linkNodeModulesIntoArtefactsDir` race (finding 9)**: concurrent
+  `POST /run`s race the remove→symlink; self-heal silently no-ops if a real
+  `node_modules` dir exists in the artefacts dir. Address when HTTP concurrency
+  matters or in Phase 5 hardening.
+- **`process.exit()` output truncation (finding 10)**: Node may drop pending
+  stdout on exit when piped. Phase 5 (SEA) must use `process.exitCode` where
+  possible.
+- **Nits (findings 11–14)**: `fsx.makeTempFile` leaks a temp dir per call;
+  `ensureDir`/`Command.output()` are dead exports; `playwright-cli.ts`
+  needlessly async; stale `deno desktop` comments in main.ts to update in
+  Phase 6.
 
 ## 6. Phased workplan
 
