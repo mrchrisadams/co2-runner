@@ -345,11 +345,11 @@ const handler = async (req: Request): Promise<Response> => {
           installed: store.firefoxInstalled,
         }),
       ),
-    );
+    ).catch(() => {});
     for (const r of store.results) {
       writer.write(
         encoder.encode(sseEncode({ type: "result", result: r })),
-      );
+      ).catch(() => {});
     }
 
     const unsubscribe = store.subscribe(async (event) => {
@@ -370,7 +370,7 @@ const handler = async (req: Request): Promise<Response> => {
     req.signal?.addEventListener("abort", () => {
       unsubscribe();
       try {
-        writer.close();
+        writer.close().catch(() => {});
       } catch {
         // writer may already be closed by the subscriber's self-cleanup
       }

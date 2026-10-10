@@ -44,8 +44,8 @@ async function resolveCliEntry(
     throw new Error(
       `Could not resolve the Playwright CLI entry for ${pkg}. co2-runner ` +
         "spawns Playwright via node for install/codegen/.spec.js journeys; " +
-        "run `npm install` in the project, or ensure the packaged Playwright " +
-        "payload exists under ~/.co2-runner/payload/node_modules.",
+        "install Playwright as a dev dependency by running `npm install` " +
+        "in the project checkout.",
     );
   }
 }

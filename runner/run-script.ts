@@ -17,7 +17,7 @@
 
 import { extname } from "node:path";
 import { parseEnergyProfile } from "./energy.ts";
-import { artefactsDir } from "../ui/paths.ts";
+import { artefactsDir, co2RunnerHome } from "../ui/paths.ts";
 import { playwrightCliPaths } from "../util/playwright-cli.ts";
 import { Command } from "../util/spawn.ts";
 import { env } from "../util/platform.ts";
@@ -25,6 +25,7 @@ import {
   mkdir,
   realPath,
   remove,
+  stat,
   symlink,
   writeTextFile,
 } from "../util/fsx.ts";
@@ -110,15 +111,15 @@ async function readAll(stream: ReadableStream<Uint8Array>): Promise<string> {
 }
 
 /**
- * The generated playwright.config.ts — and any .spec.js living in the
- * artefacts tree — import "@playwright/test" bare. Node resolves those by
- * walking node_modules up from each file's location, and the per-user
- * artefacts dir under $HOME has none. Link the node_modules the CLI
- * entries resolved from into the artefacts dir so the spawned
- * `playwright test` subprocess can resolve them. Recreated on every run
- * so it self-heals if the app (and its node_modules) moves.
+ * The generated playwright.config.ts — and any .spec.js living under the
+ * co2-runner home (artefacts tree or uploaded-journeys) — import
+ * "@playwright/test" bare. Node resolves those by walking node_modules up
+ * from each file's location, and the per-user dirs under $HOME have none.
+ * Link the node_modules the CLI entries resolved from into the given dir so
+ * the spawned `playwright test` subprocess can resolve them. Recreated on
+ * every run so it self-heals if the app (and its node_modules) moves.
  */
-async function linkNodeModulesIntoArtefactsDir(
+async function linkNodeModulesIntoDir(
   dir: string,
   nodeModules: string,
 ): Promise<void> {
@@ -128,6 +129,19 @@ async function linkNodeModulesIntoArtefactsDir(
     if ((err as NodeJS.ErrnoException).code === "EEXIST") return;
     throw err;
   });
+
+  // A stale or foreign link can survive the EEXIST short-circuit above
+  // (e.g. an earlier install pointed somewhere else). Warn instead of
+  // throwing — the downstream `playwright test --list` will surface any
+  // real resolution failure with a clearer message.
+  const expected = await realPath(nodeModules);
+  const linkExists = await stat(linkPath).then(() => true).catch(() => false);
+  const actual = linkExists ? await realPath(linkPath).catch(() => "") : "";
+  if (!linkExists || actual !== expected) {
+    console.warn(
+      `⚠️  stale node_modules link at ${linkPath}: expected it to point at ${expected}`,
+    );
+  }
 }
 
 /**
@@ -202,7 +216,14 @@ export async function runScript(
   await mkdir(ARTEFACTS_DIR, { recursive: true });
 
   const { nodeModules } = await playwrightCliPaths();
-  await linkNodeModulesIntoArtefactsDir(ARTEFACTS_DIR, nodeModules);
+  // Link node_modules into the co2-runner home so uploaded journeys written
+  // under ~/.co2-runner/uploaded-journeys/ resolve bare "@playwright/test"
+  // imports via Node's upward walk. The artefacts-dir link below is kept
+  // for scripts that live directly in the artefacts tree.
+  const home = co2RunnerHome();
+  await mkdir(home, { recursive: true });
+  await linkNodeModulesIntoDir(home, nodeModules);
+  await linkNodeModulesIntoDir(ARTEFACTS_DIR, nodeModules);
 
   // Resolve to an absolute path. Playwright resolves testDir relative to
   // the config file's location (which lives in ARTEFACTS_DIR, NOT the
