@@ -277,6 +277,30 @@ Mitigations, now mandatory:
      changed".
    - The code-reviewer gate caught this (empty Phase 2 change in the diff).
      Phase 2 was re-delegated from scratch.
+8. **Parallel batches block the orchestrator's turn (post-incident 4,
+   2026-10-10)** — Wave 2 launched Agents D, E, F as parallel `task` calls in
+   one message. E completed; D and F were ~6 minutes into active work
+   (continuous LLM streams, F had partial files on disk, D was still in its
+   read/survey phase) when the user, seeing the session produce no output for ~6
+   minutes, aborted — which cancelled the main message and both in-flight agents
+   mid-work. The agents had NOT frozen; the appearance of freezing is the
+   mechanism itself: a turn with multiple parallel `task` calls produces no
+   assistant output until ALL tasks resolve. Rules:
+   - Before launching a parallel batch (or any single task expected to run >3
+     minutes), tell the user explicitly: "this will block the session for N
+     minutes with no visible output — that is expected, the agents are working;
+     do not abort."
+   - Prefer sequential delegation when the user is actively watching; parallel
+     only for genuinely independent, similar-duration tasks.
+   - Symptom signature: log shows CONTINUOUS `stream` lines for the subagent
+     sessions right up to a simultaneous `cancel` of the main session +
+     subagents (user abort). Contrast: incident 1 = one `stream` line then dead
+     air (provider hang); incident 2 = an `asking` permission line then dead air
+     (prompt deadlock).
+   - Recovery: partial subagent work survives in its workspace directory —
+     snapshot it (`jj -R <ws> st`), then re-dispatch an agent INTO the same
+     workspace with instructions to review the partial work, complete, and
+     verify.
 
 ### Execution status (2026-10-10)
 
@@ -301,6 +325,16 @@ Mitigations, now mandatory:
   set the old var — the fallback must exist); `runner/co2.ts` keeps
   `with { type: "json" }` until Phase 4 (the Deno runtime rejects plain JSON
   imports and integration tests spawn `deno run main.ts serve`).
+- **Phase 2 re-run complete and integrated** (2026-10-10): loopback binding
+  verified via lsof, SSE live-push verified under the node server, full suite
+  88/88.
+- **Wave 1 review verdict: SHIP** (2026-10-10, second review of the complete
+  diff). No critical/major findings. Four minor hardening items were applied in
+  the "Wave 1 hardening" change (SSE `.catch` on fire-and-forget writes; link
+  staleness verification + warning in `linkNodeModulesIntoDir`; playwright-cli
+  error reworded; node_modules symlink now also created at `~/.co2-runner/` so
+  uploaded `.spec.js` journeys resolve `@playwright/test`). Wave 1 COMPLETE:
+  Phases 0+1, 3, 2 all integrated on `node-migration`.
 
 ### Wave 1 review: deferred findings (fix in later phases, do not re-open Wave 1)
 
