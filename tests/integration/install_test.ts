@@ -166,23 +166,58 @@ test("POST /run with neither journey nor journeyContents returns 400", () =>
   }));
 
 // After POST /run accepts (started: true), the journey keeps running in
-// the server's background. Wait for its result to land in /history before
-// letting withServer tear the server down — killing it mid-journey
-// orphans the playwright process tree (whose Firefox is detached from the
-// server's process group and would survive every cleanup).
-async function waitForJourneyResult(timeoutMs = 90_000): Promise<void> {
-  const deadline = Date.now() + timeoutMs;
-  while (Date.now() < deadline) {
-    try {
-      const res = await fetch(`${BASE}/history`);
-      const json = await res.json();
-      if (Array.isArray(json) && json.length > 0) return;
-    } catch {
-      // server busy mid-journey — retry
+// the server's background. Wait for it to END — via the SSE stream, either
+// a result event (success) or an error event (e.g. no power counters on
+// Linux CI) — before letting withServer tear the server down. Killing the
+// server mid-journey orphans the playwright process tree (whose Firefox is
+// detached into its own process group and would survive every cleanup).
+async function waitForJourneyEnd(timeoutMs = 120_000): Promise<void> {
+  const res = await fetch(`${BASE}/events`);
+  assert.deepEqual(res.status, 200);
+  const reader = res.body!.getReader();
+  const dec = new TextDecoder();
+
+  const waitStream = (async () => {
+    let buf = "";
+    while (true) {
+      const { value, done } = await reader.read();
+      if (done) break;
+      buf += dec.decode(value);
+      const frames = buf.split("\n\n");
+      buf = frames.pop() ?? "";
+      for (const frame of frames) {
+        const dataLine = frame.split("\n").find((l) => l.startsWith("data:"));
+        if (!dataLine) continue;
+        try {
+          const evt = JSON.parse(dataLine.slice(5).trim());
+          if (evt.type === "result") return;
+          if (
+            evt.type === "progress" &&
+            (evt.progress?.action === "error" ||
+              evt.progress?.status === "error")
+          ) {
+            return;
+          }
+        } catch {
+          // not JSON — skip the frame
+        }
+      }
     }
-    await new Promise((r) => setTimeout(r, 500));
-  }
-  throw new Error("journey did not record a result within 90s");
+    throw new Error("SSE stream ended before the journey ended");
+  })();
+
+  await Promise.race([
+    waitStream,
+    new Promise<never>((_, reject) =>
+      setTimeout(
+        () => reject(new Error(`journey did not end within ${timeoutMs / 1000}s`)),
+        timeoutMs,
+      ),
+    ),
+  ]);
+  try {
+    await reader.cancel();
+  } catch {}
 }
 
 test("POST /run with journeyContents accepts an uploaded YAML", () =>
@@ -200,7 +235,7 @@ test("POST /run with journeyContents accepts an uploaded YAML", () =>
       `expected 200 (accepted) or 409 (firefox gate), got ${res.status}`,
     );
     const json = await res.json();
-    if (json.started) await waitForJourneyResult();
+    if (json.started) await waitForJourneyEnd();
   }));
 
 test("POST /run with journeyContents accepts an uploaded .spec.js", () =>
@@ -225,5 +260,5 @@ test("POST /run with journeyContents accepts an uploaded .spec.js", () =>
     );
     const json = await res.json();
     assert("started" in json || "error" in json);
-    if (json.started) await waitForJourneyResult();
+    if (json.started) await waitForJourneyEnd();
   }));
