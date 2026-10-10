@@ -244,6 +244,23 @@ Mitigations, now mandatory:
    copy state (tsc, `deno check`, remaining `Deno.*` audit), marks what is
    actually done, and re-delegates only the remainder. The Phase 0+1 freeze lost
    no work: the change was complete and verified after the fact.
+6. **Permission-prompt deadlock (post-incident 2, 2026-10-10)** — the first Wave
+   1 review gate hung twice: the `code-reviewer` agent's permission config had
+   `bash: "*": "ask"`, and it ran `jj log` (not in the allowlist). A subagent
+   has no user to answer an "ask" prompt, so it deadlocked until cancelled.
+   Rules:
+   - Any agent delegated via `task` must have permissions that never evaluate to
+     `"ask"` — in subagent mode, `"ask"` means "hang forever". Prefer `"deny"`
+     for the wildcard so the agent adapts with its allowed tools instead of
+     blocking. (Fixed in `~/.config/opencode/agents/code-reviewer.md`: wildcard
+     flipped to `deny`, read-only allowlist broadened.)
+   - opencode does not hot-reload agent configs — a config fix requires a
+     session restart to take effect, so within a running session also constrain
+     the prompt ("do not run bash; use read/grep tools").
+   - Symptom signature in `~/.local/share/opencode/log/opencode.log`: a
+     `message=asking … permission=bash` line followed by dead air until cancel.
+     (Contrast with incident 1: an LLM `stream` line followed by dead air =
+     provider hang.)
 
 ### Execution status (2026-10-10)
 
