@@ -24,7 +24,7 @@
     "install-browsers": "tsx main.ts install",
     "run": "tsx main.ts run journeys/example.yaml",
     "check": "tsc --noEmit",
-    "test": "node --test",
+    "test": "tsx --test --test-concurrency=1 --test-force-exit tests/integration/*.ts tests/runner/*.ts tests/ui/*.ts tests/util/*.ts",
     "lint": "deno lint",
     "fmt": "deno fmt"
   }

@@ -19,6 +19,7 @@ export interface CommandOptions {
   env?: Record<string, string>;
   stdout?: StreamMode;
   stderr?: StreamMode;
+  detached?: boolean;
 }
 
 export interface CommandStatus {
@@ -78,6 +79,7 @@ export class Command {
       // blank keys explicitly if they need isolation.
       env: this.#opts.env ? { ...process.env, ...this.#opts.env } : process.env,
       stdio: ["ignore", stdout, stderr],
+      detached: this.#opts.detached,
     });
   }
 

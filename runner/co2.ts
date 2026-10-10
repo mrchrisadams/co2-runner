@@ -11,11 +11,9 @@
 // Conversion: gCO2e = Wh × intensity(gCO2/kWh) / 1000
 //
 // The data file is downloaded at build time from co2.js's GitHub repo
-// and embedded into the binary via `import ... with { type: "json" }`.
+// and inlined into the binary at build time by esbuild.
 
-import emData from "../data/electricity-maps-yearly-2025.json" with {
-  type: "json",
-};
+import emData from "../data/electricity-maps-yearly-2025.json";
 
 export interface GridIntensityEntry {
   /** Zone ID from Electricity Maps, e.g. "GB", "AU-NSW", "US-CAL-CISO". */

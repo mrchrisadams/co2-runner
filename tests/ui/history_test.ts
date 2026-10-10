@@ -1,4 +1,8 @@
-import { assertEquals } from "jsr:@std/assert";
+import { test } from "node:test";
+import { mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import path from "node:path";
+import assert from "node:assert/strict";
 import { History } from "../../ui/history.ts";
 import { defaultDbPath } from "../../ui/paths.ts";
 import type { JourneyResult } from "../../types.ts";
@@ -12,40 +16,40 @@ const sample = (i: number): JourneyResult => ({
 });
 
 async function withHistory(fn: (h: History) => Promise<void>) {
-  const dir = await Deno.makeTempDir();
+  const dir = await mkdtemp(path.join(tmpdir(), "co2-test-"));
   const dbPath = `${dir}/history.db`;
   const h = new History(dbPath);
   try {
     await fn(h);
   } finally {
     h.close();
-    await Deno.remove(dir, { recursive: true }).catch(() => {});
+    await rm(dir, { recursive: true }).catch(() => {});
   }
 }
 
-Deno.test("History.insert stores a run and recent() returns it newest-first", async () => {
+test("History.insert stores a run and recent() returns it newest-first", async () => {
   await withHistory(async (h) => {
     h.insert(sample(0));
     h.insert(sample(1));
     h.insert(sample(2));
 
     const rows = h.recent(10);
-    assertEquals(rows.length, 3);
-    assertEquals(rows[0].name, "journey-2");
-    assertEquals(rows[2].name, "journey-0");
+    assert.deepEqual(rows.length, 3);
+    assert.deepEqual(rows[0].name, "journey-2");
+    assert.deepEqual(rows[2].name, "journey-0");
   });
 });
 
-Deno.test("History.recent respects limit", async () => {
+test("History.recent respects limit", async () => {
   await withHistory(async (h) => {
     for (let i = 0; i < 5; i++) h.insert(sample(i));
-    assertEquals(h.recent(2).length, 2);
-    assertEquals(h.recent(2)[0].name, "journey-4");
+    assert.deepEqual(h.recent(2).length, 2);
+    assert.deepEqual(h.recent(2)[0].name, "journey-4");
   });
 });
 
-Deno.test("History re-opens existing file with schema intact", async () => {
-  const dir = await Deno.makeTempDir();
+test("History re-opens existing file with schema intact", async () => {
+  const dir = await mkdtemp(path.join(tmpdir(), "co2-test-"));
   const dbPath = `${dir}/history.db`;
   try {
     const h1 = new History(dbPath);
@@ -53,16 +57,16 @@ Deno.test("History re-opens existing file with schema intact", async () => {
     h1.close();
 
     const h2 = new History(dbPath); // new connection on same file
-    assertEquals(h2.recent().length, 1);
+    assert.deepEqual(h2.recent().length, 1);
     h2.insert(sample(1));
-    assertEquals(h2.recent().length, 2);
+    assert.deepEqual(h2.recent().length, 2);
     h2.close();
   } finally {
-    await Deno.remove(dir, { recursive: true }).catch(() => {});
+    await rm(dir, { recursive: true }).catch(() => {});
   }
 });
 
-Deno.test("History preserves numeric fidelity", async () => {
+test("History preserves numeric fidelity", async () => {
   await withHistory(async (h) => {
     const r: JourneyResult = {
       name: "pi",
@@ -73,22 +77,22 @@ Deno.test("History preserves numeric fidelity", async () => {
     };
     h.insert(r);
     const got = h.recent(1)[0];
-    assertEquals(got.mWh, 3.14159265);
-    assertEquals(got.joules, 11.3097);
+    assert.deepEqual(got.mWh, 3.14159265);
+    assert.deepEqual(got.joules, 11.3097);
   });
 });
 
-Deno.test("defaultDbPath honours CO2_RUNNER_DB env", () => {
-  Deno.env.set("CO2_RUNNER_DB", "/tmp/custom-co2.db");
+test("defaultDbPath honours CO2_RUNNER_DB env", () => {
+  process.env["CO2_RUNNER_DB"] = "/tmp/custom-co2.db";
   try {
-    assertEquals(defaultDbPath(), "/tmp/custom-co2.db");
+    assert.deepEqual(defaultDbPath(), "/tmp/custom-co2.db");
   } finally {
-    Deno.env.delete("CO2_RUNNER_DB");
+    delete process.env["CO2_RUNNER_DB"];
   }
 });
 
-Deno.test("defaultDbPath falls back to HOME/.co2-runner/history.db", () => {
-  Deno.env.delete("CO2_RUNNER_DB");
-  const home = Deno.env.get("HOME") ?? ".";
-  assertEquals(defaultDbPath(), `${home}/.co2-runner/history.db`);
+test("defaultDbPath falls back to HOME/.co2-runner/history.db", () => {
+  delete process.env["CO2_RUNNER_DB"];
+  const home = process.env["HOME"] ?? ".";
+  assert.deepEqual(defaultDbPath(), `${home}/.co2-runner/history.db`);
 });
