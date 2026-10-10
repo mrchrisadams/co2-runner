@@ -63,6 +63,8 @@
         "npm:@hono/node-server@1",
         "npm:@playwright/test@^1.45.0",
         "npm:@types/node@22",
+        "npm:electron-builder@^26.15.3",
+        "npm:electron@^44.7.0",
         "npm:esbuild@0.25",
         "npm:hono@4",
         "npm:playwright@^1.45.0",

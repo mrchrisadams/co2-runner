@@ -50,7 +50,19 @@ async function resolveCliEntry(
   }
 }
 
+// Under the Electron desktop shell the runtime binary is the Electron app
+// binary; anything spawned without ELECTRON_RUN_AS_NODE boots a second GUI
+// instance instead of running the CLI as plain Node. Every Playwright CLI
+// spawn site calls playwrightCliPaths() first, so assert the env here.
+// No-op under plain Node (Electron only reads the var at process startup).
+function ensureNodeSubprocessEnv(): void {
+  if (process.versions.electron) {
+    process.env.ELECTRON_RUN_AS_NODE ??= "1";
+  }
+}
+
 export async function playwrightCliPaths(): Promise<PlaywrightCliPaths> {
+  ensureNodeSubprocessEnv();
   const playwright = await resolveCliEntry("playwright");
   const test = await resolveCliEntry("@playwright/test");
   return {
