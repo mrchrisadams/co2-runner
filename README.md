@@ -1,22 +1,17 @@
 # co2-runner
 
-> [!WARNING] This not a commercially supported project.
->
-> This app was put together in a weekend to show that you can now use
-> sophisticated playwright scripts to drive a real browser and track the actual,
-> recorded client-side energy consumption, instead of relying on estimates based
-> on page size, and you can do so in (somewhat) usable graphical user interface.
->
-> You don't need to be a terminal whiz to get energy readings from a browser
-> now.
+CO2-runner is a tool to help understand and manage the 'client side' energy use of browsers when estimating the energy consumption carbon footprint of web applications.
+
+It is available as a cross platform app with a graphical user interface, for people who are not comfortable with the terminal, and a command line interface for people who are, and want to automate various actions.
+
+Use it to record user journeys using a browser, write the steps to a file, then re-run the steps on demand, to simulate the same user journey being carried out, and then see the estimated energy used by a browser, along with the corresponding carbon footprint.
+
+## What is it? The technical version
 
 A Node-based CLI tool + desktop app that drives Playwright's bundled Firefox
 through YAML-defined user journeys, records real browser energy consumption via
 the Mozilla Profiler's power counters, and presents results in an Electron
 window (or stdout in headless CLI mode).
-
-Based on the design at <https://github.com/mrchrisadams/playwright-co2>.
-
 ## Requirements
 
 - Node **>= 22.5** (for the built-in `node:sqlite`) and npm.
