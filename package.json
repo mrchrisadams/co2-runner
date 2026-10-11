@@ -1,0 +1,65 @@
+{
+  "name": "co2-runner",
+  "version": "0.1.0",
+  "description": "Measure real browser energy per user journey",
+  "type": "module",
+  "main": "electron/main.cjs",
+  "engines": {
+    "node": ">=22.5"
+  },
+  "dependencies": {
+    "@hono/node-server": "^1",
+    "@playwright/test": "^1.45",
+    "hono": "^4",
+    "playwright": "^1.45",
+    "tsx": "^4",
+    "yaml": "^2"
+  },
+  "devDependencies": {
+    "@types/node": "^22",
+    "electron": "^44.7.0",
+    "electron-builder": "^26.15.3",
+    "esbuild": "^0.25",
+    "postject": "1.0.0-alpha.6",
+    "typescript": "^5"
+  },
+  "scripts": {
+    "dev": "tsx watch main.ts serve",
+    "serve": "tsx main.ts serve",
+    "install-browsers": "tsx main.ts install",
+    "run": "tsx main.ts run journeys/example.yaml",
+    "desktop:dev": "electron electron/main.cjs",
+    "desktop": "electron-builder --mac --publish never",
+    "check": "tsc --noEmit",
+    "test": "tsx --test --test-concurrency=1 --test-force-exit tests/integration/*.ts tests/runner/*.ts tests/ui/*.ts tests/util/*.ts",
+    "compile": "node scripts/build-cli.mjs"
+  },
+  "build": {
+    "appId": "com.tgwf.co2runner",
+    "productName": "CO2 Runner",
+    "directories": {
+      "output": "dist"
+    },
+    "asar": false,
+    "files": [
+      "electron/**/*",
+      "main.ts",
+      "types.ts",
+      "runner/**/*",
+      "ui/**/*",
+      "util/**/*",
+      "data/**/*"
+    ],
+    "mac": {
+      "target": {
+        "target": "dmg",
+        "arch": ["arm64"]
+      },
+      "identity": null,
+      "artifactName": "CO2Runner.${ext}"
+    },
+    "dmg": {
+      "title": "CO2 Runner"
+    }
+  }
+}

@@ -5,24 +5,23 @@ on:
     branches: [main]
     tags: ["v*", "2026*"]
   pull_request:
-    branches: [main]
 
 jobs:
   test:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: denoland/setup-deno@v2
+      - uses: actions/setup-node@v4
         with:
-          deno-version: v2.9.x
+          node-version: 22
+          cache: npm
+      - run: npm ci
       - name: Install Playwright Firefox for tests
-        run: deno run --allow-all --allow-scripts=npm:playwright npm:playwright install firefox
-      - run: deno --version
-      - run: deno fmt --check
-      - run: deno lint
-      - run: deno check .
+        run: npx playwright install firefox
+      - name: Typecheck
+        run: npm run check
       - name: Run tests (headless runner via xvfb)
-        run: xvfb-run -a deno test --allow-all
+        run: xvfb-run -a npm test
 
   build-cli:
     needs: test
@@ -31,30 +30,32 @@ jobs:
       matrix:
         include:
           - os: macos-14
-            target: aarch64-apple-darwin
             artifact: co2-runner-aarch64-apple-darwin
           - os: ubuntu-22.04
-            target: x86_64-unknown-linux-gnu
             artifact: co2-runner-x86_64-unknown-linux-gnu
           - os: windows-latest
-            target: x86_64-pc-windows-msvc
             artifact: co2-runner-x86_64-pc-windows-msvc.exe
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
-      - uses: denoland/setup-deno@v2
+      - uses: actions/setup-node@v4
         with:
-          deno-version: v2.9.x
-      - name: Build CLI binary
-        run: deno compile -A --unsafe-proto --include npm:playwright --target ${{ matrix.target }} --output ${{ matrix.artifact }} main.ts
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Build CLI binary (Node SEA)
+        run: npm run compile
       - name: Smoke-test --help (unix)
         if: runner.os != 'Windows'
-        run: ./${{ matrix.artifact }} --help
+        run: ./dist/${{ matrix.artifact }} --help
+      - name: Smoke-test --help (windows)
+        if: runner.os == 'Windows'
+        run: ./dist/${{ matrix.artifact }} --help
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.artifact }}
-          path: ${{ matrix.artifact }}
+          path: dist/${{ matrix.artifact }}
           if-no-files-found: error
 
   build-desktop:
@@ -62,11 +63,13 @@ jobs:
     runs-on: macos-14
     steps:
       - uses: actions/checkout@v4
-      - uses: denoland/setup-deno@v2
+      - uses: actions/setup-node@v4
         with:
-          deno-version: v2.9.x
-      - name: Build desktop bundle (aarch64-apple-darwin only)
-        run: deno task desktop
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Build desktop app (Electron, aarch64 dmg)
+        run: npm run desktop
       - name: Verify DMG exists
         run: test -f dist/CO2Runner.dmg
       - name: Upload DMG artifact

@@ -1,3 +1,6 @@
+import { test } from "node:test";
+import { mkdir, readTextFile, remove, writeTextFile } from "../../util/fsx.ts";
+import { os } from "../../util/platform.ts";
 // Integration test: full run-script.js pipeline via the dispatcher in
 // runner/run.ts. Requires Firefox installed locally + internet access to
 // reach branch.climateaction.tech — so it skips gracefully when either
@@ -5,7 +8,7 @@
 //
 // To run locally: `deno test --allow-all tests/integration/run-script_journey_test.ts`
 
-import { assert, assertEquals } from "jsr:@std/assert";
+import assert from "node:assert/strict";
 import { isFirefoxInstalled } from "../../runner/install.ts";
 import { runJourney } from "../../runner/run.ts";
 import { exists } from "../../util/exists.ts";
@@ -26,9 +29,9 @@ async function canReach(url: string): Promise<boolean> {
 // the case the journey can still run but produces no power data, so we skip
 // the assertion that a non-trivial energy figure was captured.
 async function canMeasureEnergy(): Promise<boolean> {
-  if (Deno.build.os !== "linux") return true;
+  if (os() !== "linux") return true;
   try {
-    const text = await Deno.readTextFile(
+    const text = await readTextFile(
       "/proc/sys/kernel/perf_event_paranoid",
     );
     const value = parseInt(text.trim(), 10);
@@ -39,22 +42,24 @@ async function canMeasureEnergy(): Promise<boolean> {
   }
 }
 
-Deno.test({
-  name: "runJourney dispatches .spec.js to the codegen-script pipeline",
-  ignore: !(await isFirefoxInstalled()) ||
-    !(await canReach("https://branch.climateaction.tech/")) ||
-    !(await canMeasureEnergy()),
-  fn: async () => {
+test(
+  "runJourney dispatches .spec.js to the codegen-script pipeline",
+  {
+    skip: !(await isFirefoxInstalled()) ||
+      !(await canReach("https://branch.climateaction.tech/")) ||
+      !(await canMeasureEnergy()),
+  },
+  async () => {
     // Use the bundled example.spec.js — mirrors example.yaml.
     const scriptPath = "./journeys/example.spec.js";
     const result = await runJourney(scriptPath);
 
     // Shape: JourneyResult
-    assertEquals(typeof result.name, "string");
-    assertEquals(typeof result.mWh, "number");
-    assertEquals(typeof result.joules, "number");
-    assertEquals(typeof result.timestamp, "string");
-    assertEquals(typeof result.profilePath, "string");
+    assert.deepEqual(typeof result.name, "string");
+    assert.deepEqual(typeof result.mWh, "number");
+    assert.deepEqual(typeof result.joules, "number");
+    assert.deepEqual(typeof result.timestamp, "string");
+    assert.deepEqual(typeof result.profilePath, "string");
 
     // Energy: the Branch journey takes more than a few seconds, so we
     // expect non-zero power-counter sum. Tighten to > 0.0001 so we don't
@@ -77,24 +82,20 @@ Deno.test({
     const harPath = result.profilePath.replace(/-profile\.json$/, ".har");
     assert(await exists(harPath), `HAR missing at expected path ${harPath}`);
   },
-  sanitizeOps: false, // Playwright keeps timers/handles alive
-  sanitizeResources: false,
-});
+);
 
-Deno.test({
-  name: "runScript rejects multi-test files with a clear error",
-  // We can validate this without launching Firefox — validation happens
-  // before the test runs, so we just need Deno + @playwright/test.
-  fn: async () => {
+test(
+  "runScript rejects multi-test files with a clear error",
+  async () => {
     const { runScript } = await import("../../runner/run-script.ts");
 
     // Write the temp script INSIDE the artefacts dir (which we own) to
     // avoid Playwright's `--list` walking system temp folders like
     // /var/folders/.../com.apple.amsengagementd and tripping EPERM.
     const dir = `${artefactsDir()}/test-fixtures`;
-    await Deno.mkdir(dir, { recursive: true });
+    await mkdir(dir, { recursive: true });
     const tmp = `${dir}/multi-test-${Date.now()}.spec.js`;
-    await Deno.writeTextFile(
+    await writeTextFile(
       tmp,
       `import { test } from "@playwright/test";
 test("one", async ({ page }) => { await page.goto("about:blank"); });
@@ -115,7 +116,7 @@ test("two", async ({ page }) => { await page.goto("about:blank"); });
         `expected multi-test rejection message, got: ${caught!.message}`,
       );
     } finally {
-      await Deno.remove(tmp).catch(() => {});
+      await remove(tmp).catch(() => {});
     }
   },
-});
+);

@@ -14,7 +14,9 @@
 // can't see.
 
 import type { CodegenProgress } from "../types.ts";
-import { DenoNotFoundError, findDenoBinary } from "../util/deno-bin.ts";
+import { playwrightCliPaths } from "../util/playwright-cli.ts";
+import { Command } from "../util/spawn.ts";
+import { env, os } from "../util/platform.ts";
 
 export interface CodegenOptions {
   /** URL to navigate to when the Inspector opens. */
@@ -42,11 +44,11 @@ export interface CodegenResult {
  * segfault deep in the webview backend.
  */
 export function hasGraphicalDisplay(): boolean {
-  const plat = Deno.build.os;
+  const plat = os();
   if (plat === "darwin" || plat === "windows") return true;
   // Linux: check both X11 ($DISPLAY) and Wayland ($WAYLAND_DISPLAY).
-  if (Deno.env.get("DISPLAY")) return true;
-  if (Deno.env.get("WAYLAND_DISPLAY")) return true;
+  if (process.env.DISPLAY) return true;
+  if (process.env.WAYLAND_DISPLAY) return true;
   return false;
 }
 
@@ -107,20 +109,11 @@ export async function launchCodegen(
     message: `Launching Playwright codegen for ${startUrl}...`,
   });
 
-  // Resolve the deno CLI binary. Compiled desktop binaries don't include
-  // `deno` on PATH (Finder launches apps with a minimal PATH that
-  // doesn't include ~/.deno/bin). Look in well-known locations first.
-  const denoBin = await findDenoBinary();
-  if (!denoBin) {
-    throw new DenoNotFoundError();
-  }
+  const { codegen: playwrightCli } = await playwrightCliPaths();
 
-  const cmd = new Deno.Command(denoBin, {
+  const cmd = new Command(process.execPath, {
     args: [
-      "run",
-      "-A",
-      "--allow-scripts=npm:playwright",
-      "npm:playwright",
+      playwrightCli,
       "codegen",
       "--browser=firefox",
       "--target=playwright-test",
@@ -130,7 +123,7 @@ export async function launchCodegen(
     stdout: "piped",
     stderr: "piped",
     env: {
-      ...Deno.env.toObject(),
+      ...env(),
       // Playwright codegen should NOT spin up the Mozilla Profiler —
       // we're only recording a journey, not measuring energy. Explicitly
       // unset any MOZ_PROFILER_* vars the parent process might have set

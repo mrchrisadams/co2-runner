@@ -1,8 +1,28 @@
+import { test } from "node:test";
+import { spawn, execFileSync } from "node:child_process";
+import { fileURLToPath } from "node:url";
+
+function killProcessTree(pid: number): void {
+  let kids: number[] = [];
+  try {
+    kids = execFileSync("pgrep", ["-P", String(pid)], { encoding: "utf8" })
+      .split("\n")
+      .filter(Boolean)
+      .map(Number);
+  } catch {
+    // pgrep exits non-zero when the process has no children
+  }
+  for (const kid of kids) killProcessTree(kid);
+  try {
+    process.kill(pid, "SIGKILL");
+  } catch {}
+}
+
 // Integration tests for the /codegen endpoint + /codegen-status endpoint.
 //
-// We don't actually launch the codegen Inspector in tests — that requires
-// a graphical environment + user interaction with the Inspector window
-// to close it. These tests verify the HTTP contract:
+// The startUrl test DOES launch a real codegen Inspector (on graphical
+// machines with Firefox) and kills it again via its --output argv marker.
+// These tests verify the HTTP contract:
 //  - GET /codegen-status returns the right shape
 //  - POST /codegen without a startUrl returns 400
 //  - POST /codegen with a startUrl returns 200 (Firefox is installed on
@@ -16,90 +36,105 @@
 //     -d '{"startUrl":"https://example.com"}'
 // ...close the Inspector window, check ~/.co2-runner/recorded-journeys/.
 
-import { assert, assertEquals } from "jsr:@std/assert";
+import assert from "node:assert/strict";
+
+const TSX = fileURLToPath(
+  new URL("../../node_modules/.bin/tsx", import.meta.url),
+);
 
 const SERVER_PORT = 8810;
 const BASE = `http://127.0.0.1:${SERVER_PORT}`;
 
 async function withServer(run: () => Promise<void>): Promise<void> {
   const env: Record<string, string> = {
-    ...Deno.env.toObject(),
+    ...(process.env as Record<string, string>),
     CO2_RUNNER_DB: `/tmp/co2-codegen-${Date.now()}.db`,
     PORT: String(SERVER_PORT),
   };
-  const cmd = new Deno.Command(Deno.execPath(), {
-    args: ["run", "-A", "--unsafe-proto", "main.ts", "serve"],
+  const child = spawn(TSX, ["main.ts", "serve"], {
+    detached: true,
     env,
-    stdout: "inherit",
-    stderr: "inherit",
+    stdio: "inherit",
   });
-  const child = cmd.spawn();
-
-  let up = false;
-  for (let i = 0; i < 30; i++) {
-    try {
-      await fetch(BASE);
-      up = true;
-      break;
-    } catch {
-      await new Promise((r) => setTimeout(r, 100));
-    }
-  }
-  assert(up, "server did not start in time");
+  const exited = new Promise<boolean>((r) => child.once("exit", () => r(true)));
 
   try {
+    let up = false;
+    for (let i = 0; i < 60; i++) {
+      try {
+        await fetch(BASE);
+        up = true;
+        break;
+      } catch {
+        await new Promise((r) => setTimeout(r, 100));
+      }
+    }
+    assert(up, "server did not start in time");
+
     await run();
   } finally {
     try {
-      child.kill("SIGTERM");
+      process.kill(-child.pid!, "SIGTERM");
     } catch {}
-    await child.status;
+    const gone = await Promise.race([
+      exited,
+      new Promise<boolean>((r) => setTimeout(() => r(false), 3000)),
+    ]);
+    if (!gone) {
+      try {
+        process.kill(-child.pid!, "SIGKILL");
+      } catch {}
+      await Promise.race([
+        exited,
+        new Promise((r) => setTimeout(r, 2000)),
+      ]);
+    }
   }
 }
 
-Deno.test("GET /codegen-status returns the expected shape", () =>
+test("GET /codegen-status returns the expected shape", () =>
   withServer(async () => {
     const res = await fetch(`${BASE}/codegen-status`);
-    assertEquals(res.status, 200);
+    assert.deepEqual(res.status, 200);
     const json = await res.json();
     // Shape: { canCodegen, firefoxInstalled, hasGraphicalDisplay, codegenInProgress }
-    assertEquals(typeof json.canCodegen, "boolean");
-    assertEquals(typeof json.firefoxInstalled, "boolean");
-    assertEquals(typeof json.hasGraphicalDisplay, "boolean");
-    assertEquals(typeof json.codegenInProgress, "boolean");
+    assert.deepEqual(typeof json.canCodegen, "boolean");
+    assert.deepEqual(typeof json.firefoxInstalled, "boolean");
+    assert.deepEqual(typeof json.hasGraphicalDisplay, "boolean");
+    assert.deepEqual(typeof json.codegenInProgress, "boolean");
     // On a macOS dev machine: canCodegen is true iff Firefox installed.
     if (json.firefoxInstalled && json.hasGraphicalDisplay) {
-      assertEquals(json.canCodegen, true);
+      assert.deepEqual(json.canCodegen, true);
     }
     // No codegen in flight — we haven't POSTed /codegen yet.
-    assertEquals(json.codegenInProgress, false);
+    assert.deepEqual(json.codegenInProgress, false);
   }));
 
-Deno.test("POST /codegen without a startUrl returns 400", () =>
+test("POST /codegen without a startUrl returns 400", () =>
   withServer(async () => {
     const res = await fetch(`${BASE}/codegen`, {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({}),
     });
-    assertEquals(res.status, 400);
+    assert.deepEqual(res.status, 400);
     const json = await res.json();
     assert(json.error.includes("startUrl required"));
   }));
 
-Deno.test("POST /codegen with invalid JSON returns 400", () =>
+test("POST /codegen with invalid JSON returns 400", () =>
   withServer(async () => {
     const res = await fetch(`${BASE}/codegen`, {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: "not json",
     });
-    assertEquals(res.status, 400);
+    assert.deepEqual(res.status, 400);
     const json = await res.json();
     assert(json.error.includes("invalid JSON"));
   }));
 
-Deno.test("POST /codegen with startUrl returns 200 or 409 (graphical+Firefox gate)", () =>
+test("POST /codegen with startUrl returns 200 or 409 (graphical+Firefox gate)", () =>
   withServer(async () => {
     const res = await fetch(`${BASE}/codegen`, {
       method: "POST",
@@ -112,14 +147,12 @@ Deno.test("POST /codegen with startUrl returns 200 or 409 (graphical+Firefox gat
     );
 
     if (res.status === 200) {
-      // Server accepted + is now spawning playwright codegen. We need to
-      // kill the spawned Inspector process to keep the test clean — but
-      // we can't easily kill it from outside. As a mitigation, the test
-      // suite's withServer() teardown kills the server, which leaves
-      // the spawned deno-playwright-codegen subprocess orphaned. The user
-      // running tests locally will see an Inspector window pop up + can
-      // close it manually. CI machines without a display skip this path
-      // (the server returns 409 instead).
+      // Server accepted + is now spawning playwright codegen. The spawn is
+      // fire-and-forget by design (the server keeps no handle), so this
+      // test finds its own codegen child via the unique --output argv
+      // marker and kills its whole tree — otherwise the Inspector (and
+      // its browser, which playwright detaches into its own process
+      // group) would outlive the suite as orphans.
       const json = await res.json();
       assert(json.started === true);
       assert(typeof json.outputPath === "string");
@@ -127,6 +160,29 @@ Deno.test("POST /codegen with startUrl returns 200 or 409 (graphical+Firefox gat
         json.outputPath.includes("recorded-journeys"),
         `expected outputPath to live under recorded-journeys, got ${json.outputPath}`,
       );
+
+      const findCodegenPid = (): number | null => {
+        try {
+          const out = execFileSync(
+            "pgrep",
+            ["-f", `output=${json.outputPath}`],
+            { encoding: "utf8" },
+          );
+          const pid = Number(out.split("\n")[0]);
+          return Number.isFinite(pid) ? pid : null;
+        } catch {
+          return null;
+        }
+      };
+      const deadline = Date.now() + 5000;
+      let codegenPid: number | null = null;
+      while (codegenPid === null && Date.now() < deadline) {
+        codegenPid = findCodegenPid();
+        if (codegenPid === null) {
+          await new Promise((r) => setTimeout(r, 200));
+        }
+      }
+      if (codegenPid !== null) killProcessTree(codegenPid);
     } else {
       const json = await res.json();
       assert(typeof json.error === "string");

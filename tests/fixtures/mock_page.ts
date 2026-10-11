@@ -1,3 +1,4 @@
+import { test } from "node:test";
 // Mock page interface for exercising executeStep without launching Firefox.
 
 import type { LoadState } from "../../types.ts";

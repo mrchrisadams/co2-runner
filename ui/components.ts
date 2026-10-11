@@ -2,16 +2,30 @@
 // Renders a small dark-themed app that listens to the SSE stream of
 // results + progress + install-status events.
 //
-// The dashboard JavaScript is imported as a raw text string at
-// module-load time so it's embedded into the compiled CLI binary AND
-// desktop bundle. `with { type: "text" }` is a stable import-attribute
-// supported since Deno 2.9 — the contents are inlined as a string
-// constant, no disk read needed at runtime.
-// (Reading from disk at request time fails in compiled binaries —
-// Deno's compiler embeds files as virtual modules, not on disk.)
+// The dashboard JavaScript is embedded at bundle time: scripts/build-cli.mjs
+// passes esbuild a `define` for __DASHBOARD_JS__ (the contents of
+// ui/dashboard.js), so the SEA binary needs no runtime file read. Under tsx
+// (no bundler) the define is absent and the file is read from disk once, on
+// first render — kept synchronous so renderDashboard() stays sync.
 
-// deno-lint-ignore no-import-prefix
-import dashboardJs from "./dashboard.js" with { type: "text" };
+import { readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
+
+declare const __DASHBOARD_JS__: string | undefined;
+
+let dashboardJsCache: string | null = null;
+
+function dashboardJs(): string {
+  if (dashboardJsCache === null) {
+    dashboardJsCache = typeof __DASHBOARD_JS__ === "string"
+      ? __DASHBOARD_JS__
+      : readFileSync(
+        fileURLToPath(new URL("./dashboard.js", import.meta.url)),
+        "utf8",
+      );
+  }
+  return dashboardJsCache;
+}
 
 export function renderDashboard(): string {
   return /* html */ `<!DOCTYPE html>
@@ -225,7 +239,7 @@ export function renderDashboard(): string {
   </footer>
 
   <script>
-${dashboardJs}
+${dashboardJs()}
   </script>
 </body>
 

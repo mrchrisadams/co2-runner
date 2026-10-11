@@ -1,4 +1,11 @@
-import { assert } from "jsr:@std/assert";
+import { test } from "node:test";
+import { spawn } from "node:child_process";
+import { fileURLToPath } from "node:url";
+import assert from "node:assert/strict";
+
+const TSX = fileURLToPath(
+  new URL("../../node_modules/.bin/tsx", import.meta.url),
+);
 
 // Regression test for the desktop-launch crash: `deno desktop` launches the
 // binary with DENO_SERVE_ADDRESS set and NO CLI args. The CLI router must
@@ -10,13 +17,13 @@ import { assert } from "jsr:@std/assert";
 // no args while DENO_SERVE_ADDRESS is present, does NOT exit early with a
 // usage error, and stays alive long enough to serve the dashboard.
 
-const SERVER_PORT = 8000; // Deno.serve falls back to this when DENO_SERVE_ADDRESS is bogus
+const SERVER_PORT = 8000; // the server falls back to this when DENO_SERVE_ADDRESS is bogus
 const BASE = `http://localhost:${SERVER_PORT}`;
 
-Deno.test("desktop launch (no args + DENO_SERVE_ADDRESS) does not exit with usage error", () => {
+test("desktop launch (no args + DENO_SERVE_ADDRESS) does not exit with usage error", () => {
   return new Promise<void>((resolve, reject) => {
     const env: Record<string, string> = {
-      ...Deno.env.toObject(),
+      ...(process.env as Record<string, string>),
       // A realistic-but-not-functional value: this triggers desktop mode
       // detection in main.ts. The Deno runtime will complain about the
       // format on stderr but still bind to the default port.
@@ -24,40 +31,36 @@ Deno.test("desktop launch (no args + DENO_SERVE_ADDRESS) does not exit with usag
       CO2_RUNNER_DB: `/tmp/co2-runner-desktop-${Date.now()}.db`,
     };
     // NOTE: deliberately NO args, mimicking `deno desktop`.
-    const cmd = new Deno.Command(Deno.execPath(), {
-      args: ["run", "-A", "--unsafe-proto", "main.ts"],
+    const child = spawn(TSX, ["main.ts"], {
+      detached: true,
       env,
-      stdout: "piped",
-      stderr: "piped",
+      stdio: "pipe",
     });
-    const child = cmd.spawn();
+    const exited = new Promise<boolean>((r) => child.once("exit", () => r(true)));
 
     let stdout = "";
     let stderr = "";
-    const dec = new TextDecoder();
-    // Fire-and-forget the streams; we just sample stdout/stderr for diagnostics.
-    (async () => {
-      const reader = child.stdout.getReader();
-      let chunk;
-      while ((chunk = await reader.read()).done === false) {
-        stdout += dec.decode(chunk.value);
-      }
-    })().catch(() => {});
-    (async () => {
-      const reader = child.stderr.getReader();
-      let chunk;
-      while ((chunk = await reader.read()).done === false) {
-        stderr += dec.decode(chunk.value);
-      }
-    })().catch(() => {});
+    child.stdout?.on("data", (c: Buffer) => {
+      stdout += c.toString();
+    });
+    child.stderr?.on("data", (c: Buffer) => {
+      stderr += c.toString();
+    });
 
     const cleanup = async () => {
       try {
-        child.kill("SIGTERM");
+        process.kill(-child.pid!, "SIGTERM");
       } catch {}
-      try {
-        await child.status;
-      } catch {}
+      const gone = await Promise.race([
+        exited,
+        new Promise<boolean>((r) => setTimeout(() => r(false), 3000)),
+      ]);
+      if (!gone) {
+        try {
+          process.kill(-child.pid!, "SIGKILL");
+        } catch {}
+        await Promise.race([exited, new Promise((r) => setTimeout(r, 2000))]);
+      }
     };
 
     (async () => {

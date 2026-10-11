@@ -1,27 +1,32 @@
-import { assertEquals, assertExists } from "jsr:@std/assert";
+import { test } from "node:test";
+import assert from "node:assert/strict";
 import { exists } from "../../util/exists.ts";
 
-Deno.test("exists: returns true for paths that exist", async () => {
-  assertEquals(await exists("."), true);
-  assertEquals(await exists("./deno.json"), true);
+// Fixture that always exists, independent of repo config files that may
+// come and go (a former version of this test pointed at ./deno.json and
+// broke when that file was deleted in the runtime migration).
+const FIXTURE = new URL("../fixtures/profiler.ts", import.meta.url);
+
+test("exists: returns true for paths that exist", async () => {
+  assert.deepEqual(await exists("."), true);
+  assert.deepEqual(await exists("./package.json"), true);
 });
 
-Deno.test("exists: returns false for paths that don't exist", async () => {
-  assertEquals(await exists("./this/path/definitely/does/not/exist"), false);
+test("exists: returns false for paths that don't exist", async () => {
+  assert.deepEqual(
+    await exists("./this/path/definitely/does/not/exist"),
+    false,
+  );
 });
 
-Deno.test("exists: returns false (not throw) for permission errors", async () => {
+test("exists: returns false (not throw) for permission errors", async () => {
   // Path that's likely unreadable on macOS — root-only accessible.
   // On most systems this returns false rather than throwing.
   const result = await exists("/private/var/db/.systemDefaultAppsList");
-  assertEquals(typeof result, "boolean");
+  assert.deepEqual(typeof result, "boolean");
 });
 
-Deno.test("exists: handles URLs", async () => {
+test("exists: handles URLs", async () => {
   // Use a known-existing file URL.
-  const url = new URL("../../deno.json", import.meta.url);
-  assertEquals(await exists(url), true);
+  assert.deepEqual(await exists(FIXTURE), true);
 });
-
-// Resolve the import for type only so TS doesn't warn about unused import.
-void assertExists;

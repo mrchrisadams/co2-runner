@@ -1,3 +1,4 @@
+import { test } from "node:test";
 // Builds synthetic Firefox profiler profile JSON objects for testing.
 // Mirrors the structure parseEnergyProfile consumes.
 
