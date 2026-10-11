@@ -1,43 +1,41 @@
-import { assertStringIncludes } from "jsr:@std/assert";
+import { test } from "node:test";
+import assert from "node:assert/strict";
 import { renderDashboard } from "../../ui/components.ts";
 
-// renderDashboard() reads dashboard.js at module-load time via Deno's
-// `import ... with { type: "file" }` syntax. This embeds the JS into
-// the compiled binary (Deno's compiler recognises the directive and
-// inlines the file's contents as a string). Critical: this only works
-// because the import is statically analyzable; reading the file at
-// request-time via `Deno.readTextFile` would fail in compiled binaries
-// (Deno's compiler embeds files as virtual modules, not on disk).
+// renderDashboard() inlines the dashboard JavaScript into the HTML
+// response. The JS is read from disk at module-load time (relative to
+// ui/components.ts) — packaged builds (SEA/Electron) must embed it at
+// build time, which the Phase 5 esbuild bundling does.
 
-Deno.test("renderDashboard produces a complete HTML document", () => {
+test("renderDashboard produces a complete HTML document", () => {
   const html = renderDashboard();
-  assertStringIncludes(html, "<!DOCTYPE html>");
-  assertStringIncludes(html, "</html>");
-  assertStringIncludes(html, "<title>CO2 Runner</title>");
+  assert.ok(html.includes("<!DOCTYPE html>"));
+  assert.ok(html.includes("</html>"));
+  assert.ok(html.includes("<title>CO2 Runner</title>"));
 });
 
-Deno.test("renderDashboard inlines the dashboard JavaScript", () => {
+test("renderDashboard inlines the dashboard JavaScript", () => {
   // The dashboard JS is inlined into the HTML response (<script>...</script>
-  // rather than <script src=/dashboard.js>) so the page works in compiled
-  // CLI binaries and desktop bundles where Deno.cwd() is unreliable.
+  // rather than <script src=/dashboard.js>) so the page works from a single
+  // document in packaged builds.
   const html = renderDashboard();
-  assertStringIncludes(html, 'EventSource("/events")');
-  assertStringIncludes(html, 'fetch("/run"');
-  assertStringIncludes(html, 'fetch("/firefox-status"');
-  assertStringIncludes(html, 'fetch("/install"');
-  assertStringIncludes(html, 'fetch("/history');
-  assertStringIncludes(html, 'id="journey-input"');
-  assertStringIncludes(html, 'id="run-btn"');
+  assert.ok(html.includes('EventSource("/events")'));
+  assert.ok(html.includes('fetch("/run"'));
+  assert.ok(html.includes('fetch("/firefox-status"'));
+  assert.ok(html.includes('fetch("/install"'));
+  assert.ok(html.includes('fetch("/history'));
+  assert.ok(html.includes('id="journey-input"'));
+  assert.ok(html.includes('id="run-btn"'));
   // The JS body is inline (no external script src):
-  assertStringIncludes(html, "<script>\n");
+  assert.ok(html.includes("<script>\n"));
 });
 
-Deno.test("renderDashboard renders both mWh and Joules metric slots", () => {
+test("renderDashboard renders both mWh and Joules metric slots", () => {
   const html = renderDashboard();
-  assertStringIncludes(html, "mWh");
-  assertStringIncludes(html, "Joules");
+  assert.ok(html.includes("mWh"));
+  assert.ok(html.includes("Joules"));
 });
 
-Deno.test("renderDashboard displays app title", () => {
-  assertStringIncludes(renderDashboard(), "🌱 CO2 Runner");
+test("renderDashboard displays app title", () => {
+  assert.ok(renderDashboard().includes("🌱 CO2 Runner"));
 });

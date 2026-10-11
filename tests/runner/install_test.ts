@@ -1,4 +1,5 @@
-import { assertEquals } from "jsr:@std/assert";
+import { test } from "node:test";
+import assert from "node:assert/strict";
 import {
   installBrowsers,
   installBrowsersWithProgress,
@@ -6,21 +7,21 @@ import {
 } from "../../runner/install.ts";
 import type { InstallProgress } from "../../types.ts";
 
-Deno.test("isFirefoxInstalled: returns a boolean (true on this dev machine)", async () => {
+test("isFirefoxInstalled: returns a boolean (true on this dev machine)", async () => {
   // This test is run on dev machines that have run `deno task install`.
   // It just asserts the function returns a boolean and doesn't throw —
   // we don't enforce which boolean (CI machines may not have Firefox).
   const result = await isFirefoxInstalled();
-  assertEquals(typeof result, "boolean");
+  assert.deepEqual(typeof result, "boolean");
 });
 
-Deno.test("installBrowsers and installBrowsersWithProgress are exported", () => {
+test("installBrowsers and installBrowsersWithProgress are exported", () => {
   // Sanity check: the CLI entry point depends on these existing.
-  assertEquals(typeof installBrowsers, "function");
-  assertEquals(typeof installBrowsersWithProgress, "function");
+  assert.deepEqual(typeof installBrowsers, "function");
+  assert.deepEqual(typeof installBrowsersWithProgress, "function");
 });
 
-Deno.test("installBrowsersWithProgress emits a starting + complete/error event", async () => {
+test("installBrowsersWithProgress emits a starting + complete/error event", async () => {
   // Actually running the install would download ~150MB. Instead we check
   // that the progress callback type signature is honoured by exercising
   // it against a stub. We don't call installBrowsersWithProgress() here
@@ -31,7 +32,7 @@ Deno.test("installBrowsersWithProgress emits a starting + complete/error event",
   sink({ phase: "starting", message: "test" });
   sink({ phase: "downloading", message: "10% ..." });
   sink({ phase: "complete", message: "✅ done" });
-  assertEquals(events.length, 3);
-  assertEquals(events[0].phase, "starting");
-  assertEquals(events[2].phase, "complete");
+  assert.deepEqual(events.length, 3);
+  assert.deepEqual(events[0].phase, "starting");
+  assert.deepEqual(events[2].phase, "complete");
 });

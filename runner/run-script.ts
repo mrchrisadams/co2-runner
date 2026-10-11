@@ -314,6 +314,7 @@ export async function runScript(
       },
       stdout: "piped",
       stderr: "piped",
+      detached: true,
     });
     const child = cmd.spawn();
 
@@ -347,6 +348,14 @@ export async function runScript(
 
     const status = await child.status;
 
+    // Reap lingering descendants (a slow Firefox teardown can outlive the
+    // reported status — without this a browser survives the call). The
+    // child itself has exited here, so the group SIGKILL only reaches
+    // stragglers.
+    try {
+      process.kill(-child.pid!, "SIGKILL");
+    } catch {}
+
     if (!status.success) {
       // Include the actual playwright error output so the UI sees something
       // actionable, not just "exit code 1 — see server stderr" (the server
@@ -363,7 +372,7 @@ export async function runScript(
     return result;
   } finally {
     // Clean up the generated playwright.config.ts (artefacts like the
-    // profile + HAR stay — those are the user's deliverables).
+    // profile + HAR stay — those are the user.s deliverables).
     await remove(CONFIG_PATH).catch(() => {});
   }
 }
