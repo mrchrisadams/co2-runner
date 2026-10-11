@@ -13,7 +13,6 @@
 // The data file is downloaded at build time from co2.js's GitHub repo
 // and embedded into the binary via `import ... with { type: "json" }`.
 
-// deno-lint-ignore no-import-prefix
 import emData from "../data/electricity-maps-yearly-2025.json" with {
   type: "json",
 };

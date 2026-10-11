@@ -1,6 +1,10 @@
 // main.ts — CLI subcommand router + HTTP server.
 
-import { isAbsolute, relative, resolve } from "path";
+import { isAbsolute, relative, resolve } from "node:path";
+import { serve } from "@hono/node-server";
+import { mkdir, realPath, remove, writeTextFile } from "./util/fsx.ts";
+import { Command } from "./util/spawn.ts";
+import { os } from "./util/platform.ts";
 import {
   installBrowsers,
   installBrowsersWithProgress,
@@ -23,11 +27,14 @@ import {
 } from "./ui/paths.ts";
 import { gridIntensityEntries } from "./runner/co2.ts";
 
-const args = Deno.args;
+const args = process.argv.slice(2);
 const isServeMode = args[0] === "serve";
-// `deno desktop` sets DENO_SERVE_ADDRESS and passes no args; in that case we
-// skip CLI subcommand parsing entirely and go straight to the HTTP server.
-const isDesktopMode = !!Deno.env.get("DENO_SERVE_ADDRESS");
+// The desktop shell sets CO2_RUNNER_DESKTOP_ADDRESS (legacy: DENO_SERVE_ADDRESS
+// from `deno desktop`) and passes no args; in that case we skip CLI subcommand
+// parsing entirely and go straight to the HTTP server.
+const desktopAddress = process.env.CO2_RUNNER_DESKTOP_ADDRESS ??
+  process.env.DENO_SERVE_ADDRESS;
+const isDesktopMode = !!desktopAddress;
 
 const USAGE = `co2-runner — measure real browser energy per user journey
 
@@ -45,7 +52,10 @@ USAGE:
 ENV:
   PORT                  HTTP port for serve mode (default 8000)
   CO2_RUNNER_DB         SQLite history DB path (default ~/.co2-runner/history.db)
-  DENO_SERVE_ADDRESS    Set by \`deno desktop\`; when present, run suppresses stdout
+  CO2_RUNNER_DESKTOP_ADDRESS
+                        Set by the desktop shell; when present, run skips CLI
+                        parsing, starts the HTTP server, and suppresses stdout
+                        (legacy fallback: DENO_SERVE_ADDRESS)
 
 EXAMPLES:
   co2-runner install
@@ -58,12 +68,12 @@ EXAMPLES:
 if (!isDesktopMode) {
   if (args[0] === "--help" || args[0] === "-h" || args[0] === "help") {
     console.log(USAGE);
-    Deno.exit(0);
+    process.exit(0);
   }
 
   if (args[0] === undefined) {
     console.error(USAGE);
-    Deno.exit(1);
+    process.exit(1);
   }
 
   if (
@@ -71,21 +81,21 @@ if (!isDesktopMode) {
     args[0] !== "codegen"
   ) {
     console.error(`unknown subcommand: ${args[0]}\n\n${USAGE}`);
-    Deno.exit(1);
+    process.exit(1);
   }
 }
 
 // ── CLI subcommands (install / run) ────────────────────────────────────────
 if (args[0] === "install") {
   await installBrowsers();
-  Deno.exit(0);
+  process.exit(0);
 }
 
 if (args[0] === "run") {
   const journeyPath = args[1];
   if (!journeyPath) {
     console.error("Usage: co2-runner run <journey.yaml>");
-    Deno.exit(1);
+    process.exit(1);
   }
   const store = new ResultsStore();
   const result = await runJourney(journeyPath, store);
@@ -100,12 +110,12 @@ if (args[0] === "run") {
   }
 
   // Pure CLI: print and exit
-  if (!isServeMode && !Deno.env.get("DENO_SERVE_ADDRESS")) {
+  if (!isServeMode && !desktopAddress) {
     console.log(`\n=== Energy Report: ${result.name} ===`);
     console.log(
       `${result.mWh.toFixed(4)} mWh  (${result.joules.toFixed(4)} J)`,
     );
-    Deno.exit(0);
+    process.exit(0);
   }
 }
 
@@ -119,14 +129,14 @@ if (args[0] === "codegen") {
     console.error(
       "Usage: co2-runner codegen <url> [output.spec.js]\n\n" + USAGE,
     );
-    Deno.exit(1);
+    process.exit(1);
   }
 
   if (!await isFirefoxInstalled()) {
     console.error(
       "Firefox is not installed. Run `co2-runner install` first (one-time ~150MB download).",
     );
-    Deno.exit(1);
+    process.exit(1);
   }
 
   if (!hasGraphicalDisplay()) {
@@ -134,16 +144,16 @@ if (args[0] === "codegen") {
       "codegen requires a graphical environment (DISPLAY or WAYLAND_DISPLAY on Linux; " +
         "always available on macOS / Windows). Run co2-runner from a desktop session.",
     );
-    Deno.exit(1);
+    process.exit(1);
   }
 
   // Output path: user-supplied, or auto-generated under recordedJourneysDir().
   let outputPath: string;
   if (args[2]) {
-    outputPath = await Deno.realPath(args[2]).catch(() => args[2]);
+    outputPath = await realPath(args[2]).catch(() => args[2]);
   } else {
     const dir = recordedJourneysDir();
-    await Deno.mkdir(dir, { recursive: true });
+    await mkdir(dir, { recursive: true });
     outputPath = `${dir}/${buildCodegenFilename(startUrl)}`;
   }
 
@@ -158,7 +168,7 @@ if (args[0] === "codegen") {
   console.log(
     `Run it with: co2-runner run ${outputPath}`,
   );
-  Deno.exit(0);
+  process.exit(0);
 }
 
 // ── HTTP server (dev + desktop modes) ───────────────────────────────────────
@@ -177,7 +187,7 @@ function sseEncode(event: StoreEvent): string {
 // refuse anything that escapes it. Prevents the /run endpoint from being
 // used as a path-traversal primitive (e.g. POST /run {"journey":"../../etc/passwd"}).
 // Absolute paths outside JOURNEYS_ROOT are also rejected.
-const JOURNEYS_ROOT = resolve(Deno.cwd(), "journeys");
+const JOURNEYS_ROOT = resolve(process.cwd(), "journeys");
 
 function safeJourneyPath(input: string): string | null {
   const resolved = isAbsolute(input) ? input : resolve(JOURNEYS_ROOT, input);
@@ -186,11 +196,11 @@ function safeJourneyPath(input: string): string | null {
   return resolved;
 }
 
-const port = parseInt(Deno.env.get("PORT") ?? "8000", 10);
+const port = parseInt(process.env.PORT ?? "8000", 10);
 // Bind to loopback only: the /run endpoint can read journey files from disk,
 // so we don't want to expose it to other hosts on the network.
 const hostname = "127.0.0.1";
-Deno.serve({ port, hostname }, async (req: Request) => {
+const handler = async (req: Request): Promise<Response> => {
   const url = new URL(req.url);
 
   if (url.pathname === "/" && req.method === "GET") {
@@ -245,7 +255,7 @@ Deno.serve({ port, hostname }, async (req: Request) => {
         firefoxInstalled: store.firefoxInstalled,
         hasGraphicalDisplay: hasGraphicalDisplay(),
         codegenInProgress: store.codegenInProgress,
-        platform: Deno.build.os,
+        platform: os(),
       }),
       { headers: { "content-type": "application/json" } },
     );
@@ -296,7 +306,7 @@ Deno.serve({ port, hostname }, async (req: Request) => {
     // then pick the file manually via the existing file picker to run
     // it (answer 2 from the design Q&A).
     const dir = recordedJourneysDir();
-    await Deno.mkdir(dir, { recursive: true });
+    await mkdir(dir, { recursive: true });
     const outputPath = `${dir}/${buildCodegenFilename(startUrl)}`;
 
     // Spawn in the background; progress events flow through the SSE stream
@@ -323,7 +333,7 @@ Deno.serve({ port, hostname }, async (req: Request) => {
 
     // IMPORTANT: do NOT await writer.write() before returning Response.
     // TransformStream's writer.write() doesn't resolve until the readable
-    // side is being drained, and Deno.serve only flushes Response headers
+    // side is being drained, and the server only flushes Response headers
     // to the client once the handler returns. Awaiting here would deadlock
     // — the client never sees headers, never starts reading, the writes
     // never complete. Push the initial events onto the queue (sync), then
@@ -335,11 +345,11 @@ Deno.serve({ port, hostname }, async (req: Request) => {
           installed: store.firefoxInstalled,
         }),
       ),
-    );
+    ).catch(() => {});
     for (const r of store.results) {
       writer.write(
         encoder.encode(sseEncode({ type: "result", result: r })),
-      );
+      ).catch(() => {});
     }
 
     const unsubscribe = store.subscribe(async (event) => {
@@ -360,7 +370,7 @@ Deno.serve({ port, hostname }, async (req: Request) => {
     req.signal?.addEventListener("abort", () => {
       unsubscribe();
       try {
-        writer.close();
+        writer.close().catch(() => {});
       } catch {
         // writer may already be closed by the subscriber's self-cleanup
       }
@@ -426,10 +436,10 @@ Deno.serve({ port, hostname }, async (req: Request) => {
       // so runJourney's dispatcher routes correctly: .yaml → YAML
       // pipeline, .js/.mjs/.ts → codegen-script pipeline.
       const dir = uploadsDir();
-      await Deno.mkdir(dir, { recursive: true });
+      await mkdir(dir, { recursive: true });
       const safeName = uploadedName.replace(/[^\w.-]/g, "_");
       const tmp = `${dir}/${Date.now()}-${safeName}`;
-      await Deno.writeTextFile(tmp, uploaded);
+      await writeTextFile(tmp, uploaded);
       journeyPath = tmp;
       displayName = uploadedName;
     } else if (body.journey !== undefined) {
@@ -469,7 +479,7 @@ Deno.serve({ port, hostname }, async (req: Request) => {
         }
         // If we wrote a temp file for uploaded contents, clean it up.
         if (uploaded !== undefined) {
-          Deno.remove(journeyPath).catch(() => {});
+          remove(journeyPath).catch(() => {});
         }
       })
       .catch((err) => {
@@ -483,7 +493,7 @@ Deno.serve({ port, hostname }, async (req: Request) => {
           message: err.message,
         });
         if (uploaded !== undefined) {
-          Deno.remove(journeyPath).catch(() => {});
+          remove(journeyPath).catch(() => {});
         }
       });
     return new Response(JSON.stringify({ started: true }), {
@@ -517,11 +527,11 @@ Deno.serve({ port, hostname }, async (req: Request) => {
     // to navigate to a hidden directory in Finder.
     const dir = co2RunnerHome();
     try {
-      const cmd = Deno.build.os === "darwin"
-        ? new Deno.Command("open", { args: [dir] })
-        : Deno.build.os === "linux"
-        ? new Deno.Command("xdg-open", { args: [dir] })
-        : new Deno.Command("explorer", { args: [dir] });
+      const cmd = os() === "darwin"
+        ? new Command("open", { args: [dir] })
+        : os() === "linux"
+        ? new Command("xdg-open", { args: [dir] })
+        : new Command("explorer", { args: [dir] });
       await cmd.spawn().status;
     } catch (err) {
       return new Response(
@@ -538,4 +548,6 @@ Deno.serve({ port, hostname }, async (req: Request) => {
   }
 
   return new Response("Not found", { status: 404 });
-});
+};
+
+serve({ fetch: handler, port, hostname });

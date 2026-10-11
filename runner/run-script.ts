@@ -15,10 +15,20 @@
 // profile to <artefacts-dir>/<slug>-profile.json on shutdown. The existing
 // parseEnergyProfile() sums the power counters.
 
-import { extname } from "path";
+import { extname } from "node:path";
 import { parseEnergyProfile } from "./energy.ts";
-import { artefactsDir } from "../ui/paths.ts";
-import { DenoNotFoundError, findDenoBinary } from "../util/deno-bin.ts";
+import { artefactsDir, co2RunnerHome } from "../ui/paths.ts";
+import { playwrightCliPaths } from "../util/playwright-cli.ts";
+import { Command } from "../util/spawn.ts";
+import { env } from "../util/platform.ts";
+import {
+  mkdir,
+  realPath,
+  remove,
+  stat,
+  symlink,
+  writeTextFile,
+} from "../util/fsx.ts";
 import type { ResultsStore } from "../ui/results.ts";
 import type { JourneyResult } from "../types.ts";
 
@@ -49,20 +59,15 @@ export async function countTests(
   scriptPath: string,
   configPath: string,
 ): Promise<number> {
-  // Resolve the deno CLI binary; throws DenoNotFoundError if absent.
-  const denoBin = await findDenoBinary();
-  if (!denoBin) throw new DenoNotFoundError();
+  const { test: playwrightCli } = await playwrightCliPaths();
 
   // cwd = artefacts dir (the parent of the generated playwright.config.ts).
   // Not strictly necessary for `--list` (which doesn't run tests), but
   // keeps the spawn contract uniform with the actual test-run spawn below.
-  const cmd = new Deno.Command(denoBin, {
+  const cmd = new Command(process.execPath, {
     cwd: artefactsDir(),
     args: [
-      "run",
-      "-A",
-      "--allow-scripts=npm:playwright",
-      "npm:@playwright/test",
+      playwrightCli,
       "test",
       "--list",
       "--config",
@@ -103,6 +108,40 @@ async function readAll(stream: ReadableStream<Uint8Array>): Promise<string> {
     buf += dec.decode(value, { stream: true });
   }
   return buf;
+}
+
+/**
+ * The generated playwright.config.ts — and any .spec.js living under the
+ * co2-runner home (artefacts tree or uploaded-journeys) — import
+ * "@playwright/test" bare. Node resolves those by walking node_modules up
+ * from each file's location, and the per-user dirs under $HOME have none.
+ * Link the node_modules the CLI entries resolved from into the given dir so
+ * the spawned `playwright test` subprocess can resolve them. Recreated on
+ * every run so it self-heals if the app (and its node_modules) moves.
+ */
+async function linkNodeModulesIntoDir(
+  dir: string,
+  nodeModules: string,
+): Promise<void> {
+  const linkPath = `${dir}/node_modules`;
+  await remove(linkPath).catch(() => {});
+  await symlink(nodeModules, linkPath, "junction").catch((err) => {
+    if ((err as NodeJS.ErrnoException).code === "EEXIST") return;
+    throw err;
+  });
+
+  // A stale or foreign link can survive the EEXIST short-circuit above
+  // (e.g. an earlier install pointed somewhere else). Warn instead of
+  // throwing — the downstream `playwright test --list` will surface any
+  // real resolution failure with a clearer message.
+  const expected = await realPath(nodeModules);
+  const linkExists = await stat(linkPath).then(() => true).catch(() => false);
+  const actual = linkExists ? await realPath(linkPath).catch(() => "") : "";
+  if (!linkExists || actual !== expected) {
+    console.warn(
+      `⚠️  stale node_modules link at ${linkPath}: expected it to point at ${expected}`,
+    );
+  }
 }
 
 /**
@@ -174,12 +213,22 @@ export async function runScript(
   opts?: { displayName?: string; slowMo?: boolean; filmReel?: boolean },
 ): Promise<JourneyResult> {
   const ARTEFACTS_DIR = artefactsDir();
-  await Deno.mkdir(ARTEFACTS_DIR, { recursive: true });
+  await mkdir(ARTEFACTS_DIR, { recursive: true });
+
+  const { nodeModules } = await playwrightCliPaths();
+  // Link node_modules into the co2-runner home so uploaded journeys written
+  // under ~/.co2-runner/uploaded-journeys/ resolve bare "@playwright/test"
+  // imports via Node's upward walk. The artefacts-dir link below is kept
+  // for scripts that live directly in the artefacts tree.
+  const home = co2RunnerHome();
+  await mkdir(home, { recursive: true });
+  await linkNodeModulesIntoDir(home, nodeModules);
+  await linkNodeModulesIntoDir(ARTEFACTS_DIR, nodeModules);
 
   // Resolve to an absolute path. Playwright resolves testDir relative to
   // the config file's location (which lives in ARTEFACTS_DIR, NOT the
   // caller's cwd), so relative script paths break otherwise.
-  const absScriptPath = await Deno.realPath(scriptPath);
+  const absScriptPath = await realPath(scriptPath);
 
   // Derive a display name + slug from the script's basename (minus extension).
   // The caller can override the display name (e.g. when the temp file has a
@@ -199,7 +248,7 @@ export async function runScript(
     slowMo: opts?.slowMo,
     filmReel: opts?.filmReel,
   });
-  await Deno.writeTextFile(CONFIG_PATH, configContents);
+  await writeTextFile(CONFIG_PATH, configContents);
 
   try {
     // ── Validate: single test only ────────────────────────────────────────
@@ -234,8 +283,7 @@ export async function runScript(
       message: "launching Firefox + running journey script...",
     });
 
-    const denoBin = await findDenoBinary();
-    if (!denoBin) throw new DenoNotFoundError();
+    const { test: playwrightCli } = await playwrightCliPaths();
 
     // Run the subprocess with cwd = ARTEFACTS_DIR. Without this, the
     // subprocess inherits the parent's cwd, which when the desktop app
@@ -243,20 +291,17 @@ export async function runScript(
     // @playwright/test tries to mkdir `test-results/` in its cwd and
     // crashes with `EROFS: read-only file system, mkdir '/test-results/...'`.
     // The artefacts dir is one we own + create, so it's always writable.
-    const cmd = new Deno.Command(denoBin, {
+    const cmd = new Command(process.execPath, {
       cwd: ARTEFACTS_DIR,
       args: [
-        "run",
-        "-A",
-        "--allow-scripts=npm:playwright",
-        "npm:@playwright/test",
+        playwrightCli,
         "test",
         "--config",
         CONFIG_PATH,
         "--reporter=line",
       ],
       env: {
-        ...Deno.env.toObject(),
+        ...env(),
         MOZ_PROFILER_STARTUP: "1",
         MOZ_PROFILER_STARTUP_ENTRIES: "10000000",
         MOZ_PROFILER_STARTUP_INTERVAL: "10",
@@ -319,6 +364,6 @@ export async function runScript(
   } finally {
     // Clean up the generated playwright.config.ts (artefacts like the
     // profile + HAR stay — those are the user's deliverables).
-    await Deno.remove(CONFIG_PATH).catch(() => {});
+    await remove(CONFIG_PATH).catch(() => {});
   }
 }

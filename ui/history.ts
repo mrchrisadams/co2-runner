@@ -2,7 +2,8 @@
 // Avoids Deno KV (stuck in beta since May 2025). Uses DatabaseSync which
 // is built into Deno 2.2+ with no extra deps.
 
-import { DatabaseSync } from "sqlite";
+import { mkdirSync } from "node:fs";
+import { DatabaseSync } from "node:sqlite";
 import type { JourneyResult } from "../types.ts";
 
 export interface StoredRun {
@@ -24,7 +25,7 @@ export class History {
     const dir = dbPath.substring(0, dbPath.lastIndexOf("/"));
     if (dir) {
       try {
-        Deno.mkdirSync(dir, { recursive: true });
+        mkdirSync(dir, { recursive: true });
       } catch {
         // Directory may already exist or the path may be relative; ignore.
       }
@@ -61,7 +62,7 @@ export class History {
       `SELECT id, name, mWh, joules, timestamp, profile FROM runs
        ORDER BY id DESC LIMIT ?`,
     );
-    return stmt.all(limit) as StoredRun[];
+    return stmt.all(limit) as unknown as StoredRun[];
   }
 
   close(): void {

@@ -2,16 +2,17 @@
 // Renders a small dark-themed app that listens to the SSE stream of
 // results + progress + install-status events.
 //
-// The dashboard JavaScript is imported as a raw text string at
-// module-load time so it's embedded into the compiled CLI binary AND
-// desktop bundle. `with { type: "text" }` is a stable import-attribute
-// supported since Deno 2.9 — the contents are inlined as a string
-// constant, no disk read needed at runtime.
-// (Reading from disk at request time fails in compiled binaries —
-// Deno's compiler embeds files as virtual modules, not on disk.)
+// The dashboard JavaScript is read from disk at module-load time (relative
+// to this module) and inlined into the HTML response; Node has no
+// `import ... with { type: "text" }` for raw-text modules. Because the file
+// is read from disk, packaged SEA/Electron builds must embed it — Phase 5
+// does this via an esbuild text loader.
 
-// deno-lint-ignore no-import-prefix
-import dashboardJs from "./dashboard.js" with { type: "text" };
+import { readTextFile } from "../util/fsx.ts";
+
+const dashboardJs = await readTextFile(
+  new URL("./dashboard.js", import.meta.url),
+);
 
 export function renderDashboard(): string {
   return /* html */ `<!DOCTYPE html>

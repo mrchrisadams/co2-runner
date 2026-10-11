@@ -3,7 +3,8 @@
 // Power counters are reported per-interval in picoWatt-hours; we sum them
 // across parent + child processes and convert to mWh / Joules.
 
-import { gunzipSync } from "zlib";
+import { gunzipSync } from "node:zlib";
+import { readFile } from "../util/fsx.ts";
 import type { JourneyResult } from "../types.ts";
 
 interface ProfilerCounter {
@@ -26,7 +27,7 @@ export async function parseEnergyProfile(
   profilePath: string,
   journeyName: string,
 ): Promise<JourneyResult> {
-  const raw = await Deno.readFile(profilePath);
+  const raw = await readFile(profilePath);
   const isGzip = raw[0] === 0x1f && raw[1] === 0x8b;
   const json = isGzip
     ? gunzipSync(raw).toString("utf8")
