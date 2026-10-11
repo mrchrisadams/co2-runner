@@ -51,9 +51,25 @@
         "require-await"
       ]
     },
-    "exclude": ["cruft/", "screenshots/", "dist/", "journeys/"]
+    "exclude": [
+      "cruft/",
+      "screenshots/",
+      "dist/",
+      "journeys/",
+      "Migrating Deno Project to Node or Bun.md",
+      "MIGRATION_PLAN_BUN.md",
+      "MIGRATION_PLAN_NODE.md"
+    ]
   },
   "fmt": {
-    "exclude": ["cruft/", "screenshots/", "dist/", "journeys/"]
+    "exclude": [
+      "cruft/",
+      "screenshots/",
+      "dist/",
+      "journeys/",
+      "Migrating Deno Project to Node or Bun.md",
+      "MIGRATION_PLAN_BUN.md",
+      "MIGRATION_PLAN_NODE.md"
+    ]
   }
 }
