@@ -1,5 +1,17 @@
 # Architecture
 
+> **⚠️ Migrating from Deno to Node (October 2026).** The runtime was ported to
+> Node.js (see [ADR-006](adrs/adr-006-migrate-runtime-to-node.md)): the HTTP
+> server is now Hono on `@hono/node-server`, the CLI is a Node SEA
+> (`scripts/build-cli.mjs`), the desktop app is Electron
+> (`electron/main.cjs` + electron-builder), and the test suite runs on
+> `node:test`. The container diagram below reflects the new architecture; the
+> deeper sequence diagrams in this document still describe the **pre-migration
+> Deno flow** (bundled Deno CLI, `deno run npm:playwright …`,
+> `findDenoBinary()`) and are kept as historical reference until they are
+> redrawn — the Node equivalents spawn `node <playwright-cli>` via
+> `util/playwright-cli.ts` instead.
+
 This document describes the architecture of `co2-runner` using the
 [C4 model](https://c4model.com/) — starting with the highest-level context view
 and zooming in to containers and key components, then drilling into specific
@@ -48,17 +60,18 @@ graph LR
 ## C4 Level 2: Container
 
 co2-runner ships as two distributable artefacts that share a common codebase.
-Both bundle the Deno runtime; both serve the same HTTP API.
+Both run on Node.js (≥22.5); the CLI is a Node SEA single executable, the
+desktop app is Electron.
 
 ```mermaid
 graph TB
     subgraph "User surfaces"
-        CLI["CLI Binary<br/>./co2-runner<br/>~80 MB Mach-O<br/>(deno compile)"]
-        DESKTOP["Desktop App<br/>dist/CO2Runner.dmg<br/>~75 MB<br/>(deno desktop + bundled deno CLI)"]
+        CLI["CLI Binary<br/>dist/co2-runner-<triple><br/>(Node SEA via scripts/build-cli.mjs)"]
+        DESKTOP["Desktop App<br/>dist/CO2Runner.dmg<br/>(Electron + electron-builder,<br/>~140 MB)"]
     end
 
     subgraph "co2-runner process (both modes)"
-        SERVER["HTTP Server (main.ts)<br/>Deno.serve on 127.0.0.1<br/>Routes: / /run /events<br/>/history /install /codegen<br/>/firefox-status /open-home<br/>/grid-intensities"]
+        SERVER["HTTP Server (main.ts)<br/>Hono on @hono/node-server, 127.0.0.1<br/>Routes: / /run /events<br/>/history /install /codegen<br/>/firefox-status /open-home<br/>/grid-intensities"]
         DASH["Dashboard UI<br/>components.ts → HTML + inlined<br/>dashboard.js (no framework)"]
         RUNNERS["Journey Runners<br/>run.ts (YAML dispatcher)<br/>run-script.ts (.spec.js)<br/>codegen.ts (record)<br/>install.ts (Firefox setup)"]
         CO2MOD["CO2 module<br/>co2.ts (grid intensity data<br/>+ Wh → gCO2e conversion)"]
@@ -72,7 +85,7 @@ graph TB
     end
 
     subgraph "External"
-        BUNDLED["Bundled Deno CLI<br/>Contents/Resources/deno/deno<br/>(desktop app only, ~77MB)"]
+        NODE_RT["Node.js runtime<br/>(≥22.5, Electron-as-Node in<br/>the desktop app)"]
         PW_FF["Playwright Firefox"]
         PW_TEST["@playwright/test runner"]
         PW_CODEGEN["playwright codegen"]
@@ -140,7 +153,10 @@ graph TB
     end
 
     subgraph "util/ (helpers)"
-        DENOBIN["deno-bin.ts<br/>findDenoBinary()<br/>bundled-path-first lookup"]
+        PWCLI["playwright-cli.ts<br/>resolves the playwright CLI<br/>+ node runtime for subprocesses"]
+        PLATFORM["platform.ts<br/>os() / env() / args()<br/>(win32 → windows mapping)"]
+        FSX["fsx.ts<br/>Deno-shaped fs helpers<br/>over node:fs/promises"]
+        SPAWN["spawn.ts<br/>Deno.Command-shaped wrapper<br/>over node:child_process"]
         EXISTS["exists.ts<br/>async file-exists helper"]
     end
 
@@ -542,7 +558,8 @@ graph TB
   - ADR 001: HTML syntax highlighting in template literals
   - ADR 002: Support Playwright codegen scripts (.spec.js) as a journey format
   - ADR 003: Integrate `playwright codegen` into the app
-  - ADR 004: Bundle standalone Deno CLI into the desktop app
+  - ADR 004: Bundle standalone Deno CLI into the desktop app (superseded by ADR-006)
   - ADR 005: No filmreel in macOS Firefox Profiler JSON
-- **Plan**: `plan.md` for the phased implementation history.
+  - ADR 006: Migrate the runtime from Deno to Node
+- **Migration plan**: `MIGRATION_PLAN_NODE.md` for the phased migration history.
 - **README**: `README.md` for usage + caveats from an end-user perspective.

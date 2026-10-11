@@ -2,9 +2,14 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { exists } from "../../util/exists.ts";
 
+// Fixture that always exists, independent of repo config files that may
+// come and go (a former version of this test pointed at ./deno.json and
+// broke when that file was deleted in the runtime migration).
+const FIXTURE = new URL("../fixtures/profiler.ts", import.meta.url);
+
 test("exists: returns true for paths that exist", async () => {
   assert.deepEqual(await exists("."), true);
-  assert.deepEqual(await exists("./deno.json"), true);
+  assert.deepEqual(await exists("./package.json"), true);
 });
 
 test("exists: returns false for paths that don't exist", async () => {
@@ -23,6 +28,5 @@ test("exists: returns false (not throw) for permission errors", async () => {
 
 test("exists: handles URLs", async () => {
   // Use a known-existing file URL.
-  const url = new URL("../../deno.json", import.meta.url);
-  assert.deepEqual(await exists(url), true);
+  assert.deepEqual(await exists(FIXTURE), true);
 });
