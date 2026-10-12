@@ -143,3 +143,87 @@ test("NOT modified by previous tests: history stays empty", () =>
     const json = await res.json();
     assert.deepEqual(json.length, 0);
   }));
+
+// ── Green Metrics Tool cluster submission ──────────────────────────────────
+//
+// Only the paths that resolve before any outbound call are exercised here.
+// A successful POST /gmt-submit would queue a real measurement on Green
+// Coding Solutions' cluster, so the happy path is covered by the fetch-stubbed
+// unit tests in tests/runner/gmt-jobs_test.ts instead.
+
+const SAMPLE_JOURNEY = `
+name: "http test journey"
+url: "https://example.com/"
+steps:
+  - action: goto
+    url: "https://example.com/"
+    waitFor: networkidle
+  - action: wait
+    ms: 2000
+`;
+
+test("POST /gmt-preview returns the exact payload that would be sent", () =>
+  withServer(async () => {
+    const res = await fetch(`${BASE}/gmt-preview`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        journeyContents: SAMPLE_JOURNEY,
+        journeyName: "sample.yaml",
+      }),
+    });
+    const json = await res.json();
+    assert.deepEqual(res.status, 200);
+    assert.deepEqual(json.journeyName, "http test journey");
+    assert.deepEqual(json.page, "https://example.com/");
+    assert.ok(json.script.includes('await page.goto("https://example.com/")'));
+    assert.ok(json.script.includes("await page.waitForTimeout(2000)"));
+    assert.deepEqual(json.localMWh, null);
+    assert.ok(json.estimatedSeconds > 0);
+  }));
+
+test("POST /gmt-preview rejects a journey with no starting URL", () =>
+  withServer(async () => {
+    const res = await fetch(`${BASE}/gmt-preview`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        journeyContents: "name: no url\nsteps:\n  - action: wait\n    ms: 10\n",
+      }),
+    });
+    assert.deepEqual(res.status, 400);
+    assert.match((await res.json()).error, /starting URL/);
+  }));
+
+test("POST /gmt-preview without journeyContents returns 400", () =>
+  withServer(async () => {
+    const res = await fetch(`${BASE}/gmt-preview`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({}),
+    });
+    assert.deepEqual(res.status, 400);
+  }));
+
+test("POST /gmt-submit refuses a codegen script before contacting the gateway", () =>
+  withServer(async () => {
+    const res = await fetch(`${BASE}/gmt-submit`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        journeyContents: "test('x', async () => {});",
+        journeyName: "journey.spec.js",
+      }),
+    });
+    assert.deepEqual(res.status, 400);
+    assert.match((await res.json()).error, /only YAML journeys/);
+  }));
+
+test("GET /gmt-submissions returns JSON list (empty by default)", () =>
+  withServer(async () => {
+    const res = await fetch(`${BASE}/gmt-submissions`);
+    const json = await res.json();
+    assert.deepEqual(res.status, 200);
+    assert.deepEqual(Array.isArray(json), true);
+    assert.deepEqual(json.length, 0);
+  }));

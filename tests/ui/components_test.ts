@@ -39,3 +39,29 @@ test("renderDashboard renders both mWh and Joules metric slots", () => {
 test("renderDashboard displays app title", () => {
   assert.ok(renderDashboard().includes("🌱 CO2 Runner"));
 });
+
+test("renderDashboard wires up the GMT cluster submission flow", () => {
+  const html = renderDashboard();
+  assert.ok(html.includes('id="gmt-btn"'));
+  assert.ok(html.includes('id="gmt-modal"'));
+  assert.ok(html.includes('id="gmt-results"'));
+  assert.ok(html.includes('fetch("/gmt-preview"'));
+  assert.ok(html.includes('fetch("/gmt-submit"'));
+  assert.ok(html.includes('fetch("/gmt-submissions'));
+});
+
+test("renderDashboard warns before anything leaves the machine", () => {
+  // Cluster submission is co2-runner's only third-party call. The modal has
+  // to say so, and has to show the script that would be sent.
+  const html = renderDashboard();
+  assert.ok(html.includes("This leaves your machine."));
+  assert.ok(html.includes("gateway.green-coding.io"));
+  assert.ok(html.includes('id="gmt-preview-script"'));
+});
+
+test("renderDashboard qualifies the local-vs-cluster comparison", () => {
+  // Showing two energy figures side by side without saying they measure
+  // different things would invite a false before/after reading.
+  const html = renderDashboard();
+  assert.ok(html.includes("not a before/after"));
+});
