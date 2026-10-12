@@ -118,17 +118,72 @@ reverses any mistaken rewrite.
 
 ---
 
+## Crediting ribalba (co-authorship)
+
+ribalba wrote the original implementation, so every adapted commit should
+credit them. In git this is the `Co-authored-by:` trailer; **jj has no separate
+"co-author" field, but it doesn't need one** — a jj change's description
+*becomes the git commit message* when it is pushed, so you simply put the
+trailer in the description text.
+
+The trailer format (GitHub recognises this and shows "co-authored by" on the
+commit; jj's own `jj log` also renders `Co-authored-by:` trailers):
+
+```
+Co-authored-by: Name <email@address>
+```
+
+ribalba's details from the PR commit (`a02d855`): **Didi Hoffmann
+`<didi@ribalba.de>`** (GitHub user `ribalba`). To make the GitHub attribution
+link to their avatar/profile, the email must match one GitHub associates with
+the account — `didi@ribalba.de` is the email on the original commit, so use
+that. (The safe fallback is their noreply address:
+`39629+ribalba@users.noreply.github.com`.)
+
+### Adding the trailer in jj
+
+```sh
+# set it once, when describing each commit
+jj desc -m "Add GMT script translation and protocol client
+
+Co-authored-by: Didi Hoffmann <didi@ribalba.de>"
+
+# or retro-fit it onto existing changes (jj descriptions are mutable)
+jj desc -r <change-id> -m "existing message
+
+Co-authored-by: Didi Hoffmann <didi@ribalba.de>"
+```
+
+Because descriptions are mutable at any time — even after `jj rebase` — you can
+add the trailer to all six feature commits in one pass at the end, e.g.:
+
+```sh
+for c in $(jj log -r 'trunk()..@ & ~empty()' --no-graph -T 'change_id ++ "\n"'); do
+  jj desc -r "$c" --edit   # add the trailer line to each description
+done
+```
+
+Notes:
+
+- **No `git commit --amend` gymnastics needed** — `jj desc -r` rewrites the
+  message directly, and commit IDs rehash automatically.
+- The trailer must be in the **last paragraph** of the message (blank line
+  before it) for git/GitHub tooling to pick it up as a trailer.
+- Also worth crediting outside the commits: a line in the PR description /
+  merge commit, and ADR-006 already names the design origin — consider adding
+  an "Original implementation by @ribalba" note to the README section.
+
 ## Keeping this plan out of pushed history
 
-This document lives in its **own jj change** (change ID `prnyxwtt`,
+This document lives in its **own jj change** (originally change ID `prnyxwtt`,
 description: *"Add plan for adapting PR #1 GMT webNRG support to Node build"*),
 as a sibling of `main` — not a descendant you would push. When you're done with
 it:
 
 ```sh
-jj abandon prnyxwtt        # removes just this plan commit; nothing else is affected
+jj abandon prnyxwtt pqstmwsy   # removes just the plan commits; nothing else is affected
 ```
 
-Because the feature commits are **not** descendants of it, abandoning it will
-not touch the feature work. Just make sure `main` (or your feature bookmark)
-never gets moved onto `prnyxwtt` before pushing.
+Because the feature commits are **not** descendants of them, abandoning them
+will not touch the feature work. Just make sure `main` (or your feature
+bookmark) never gets moved onto a plan change before pushing.
