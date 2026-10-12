@@ -8,38 +8,16 @@
 // dir, so the UI / history / energy parser stay format-agnostic.
 
 import { firefox } from "playwright";
-import { parse as parseYaml } from "yaml";
 import { parseEnergyProfile } from "./energy.ts";
+import { parseJourneyConfig } from "./journey-config.ts";
 import { isScriptFile, runScript } from "./run-script.ts";
 import { artefactsDir } from "../ui/paths.ts";
 import { env } from "../util/platform.ts";
 import { mkdir, readTextFile } from "../util/fsx.ts";
 import type { ResultsStore } from "../ui/results.ts";
-import type { JourneyConfig, JourneyResult, PageLike, Step } from "../types.ts";
+import type { JourneyResult, PageLike, Step } from "../types.ts";
 
 const slugify = (s: string) => s.replace(/\s+/g, "-");
-
-function validateConfig(raw: unknown, source: string): JourneyConfig {
-  const o = raw as Record<string, unknown>;
-  if (typeof o?.name !== "string") {
-    throw new Error(`journey ${source}: missing or non-string 'name' field`);
-  }
-  if (!Array.isArray(o?.steps)) {
-    throw new Error(`journey ${source}: 'steps' must be an array`);
-  }
-  if (o.steps.length === 0) {
-    throw new Error(`journey ${source}: 'steps' array is empty`);
-  }
-  for (let i = 0; i < o.steps.length; i++) {
-    const s = (o.steps as unknown[])[i] as Record<string, unknown>;
-    if (typeof s?.action !== "string") {
-      throw new Error(
-        `journey ${source}: step ${i} missing or non-string 'action'`,
-      );
-    }
-  }
-  return o as unknown as JourneyConfig;
-}
 
 export async function runJourney(
   journeyPath: string,
@@ -53,7 +31,7 @@ export async function runJourney(
   }
 
   const raw = await readTextFile(journeyPath);
-  const config = validateConfig(parseYaml(raw), journeyPath);
+  const config = parseJourneyConfig(raw, journeyPath);
 
   if (config.browser && config.browser !== "firefox") {
     throw new Error(
